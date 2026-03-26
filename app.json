@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "TrackPressure",
+    "slug": "trackpressure",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0F0F0F"
+    },
+    "scheme": "trackpressure",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.yourname.trackpressure",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TrackPressure uses your location to detect nearby tracks and fetch current weather conditions."
+      }
+    },
+    "android": {
+      "package": "com.yourname.trackpressure",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "TrackPressure uses your location to detect nearby tracks and fetch current weather conditions."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "188ed16a-65e2-44dd-8337-c1afac3c4299"
+      }
+    }
+  }
+}
