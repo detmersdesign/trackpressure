@@ -14,7 +14,7 @@ const SILHOUETTE_IMAGES: Record<string, any> = {
   muscle:                  require('../../assets/silhouettes/generic.png'),
   vintage_british:         require('../../assets/silhouettes/generic.png'),
   vintage_european:        require('../../assets/silhouettes/-side-profile-silhouette-of-a-1970s-porsche-911--w.png'),
-  vintage_german_japanese: require('../../assets/silhouettes/-side-profile-silhouette-of-a-datsun-240z--white-o.png'),
+  vintage_german_japanese: require('../../assets/silhouettes/-side-profile-silhouette-of-a-datsun-240z--white-o_1.png'),
   generic:                 require('../../assets/silhouettes/generic.png'),
 };
 
@@ -25,7 +25,7 @@ interface Props {
   height?: number;
 }
 
-export function VehicleSilhouette({ category, height = 90 }: Props) {
+export function VehicleSilhouette({ category, height = 70 }: Props) {
   const source = SILHOUETTE_IMAGES[category ?? 'generic']
     ?? SILHOUETTE_IMAGES.generic;
 
@@ -51,5 +51,6 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+    resizeMode: 'contain',
   },
 });

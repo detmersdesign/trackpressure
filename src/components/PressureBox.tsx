@@ -22,12 +22,11 @@ export function PressureBox({ label, sublabel, value, active, optional, onPress 
       <View style={styles.header}>
         <Text style={styles.label}>{label}</Text>
         {optional && <Text style={styles.optionalTag}>optional</Text>}
+        <Text style={[styles.sublabel, active && styles.sublabelActive]}>{sublabel}</Text>
       </View>
       <Text style={[styles.value, isEmpty && styles.valuePlaceholder]}>
         {isEmpty ? '—' : value}
       </Text>
-      <Text style={[styles.sublabel, active && styles.sublabelActive]}>{sublabel}</Text>
-      {active && <View style={styles.cursor} />}
     </TouchableOpacity>
   );
 }
@@ -79,14 +78,5 @@ const styles = StyleSheet.create({
   },
   sublabelActive: {
     color: colors.accent,
-  },
-  cursor: {
-    position: 'absolute',
-    bottom: 10,
-    right: 12,
-    width: 2,
-    height: 14,
-    backgroundColor: colors.accent,
-    borderRadius: 1,
   },
 });

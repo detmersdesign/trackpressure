@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Alert, ActivityIndicator
@@ -39,7 +39,7 @@ const COLD_CORNER_LABELS: Record<ColdCorner, string> = {
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
-  route?: { params?: { mode?: Mode; ambientTempC?: number | null } };
+  route?: { params?: { mode?: Mode; ambientTempC?: number | null; historic_date?: string } };
 };
 
 function roundHalf(v: number): number {
@@ -54,11 +54,13 @@ function coldStoredHint(raw: string): string | null {
 }
 
 export default function QuickLogScreen({ navigation, route }: Props) {
-  const { activeEvent, openSession, setOpenSession, clearOpenSession, setLastEntry, incrementSession } = useEvent();
+  const { activeEvent, openSession, setActiveTab, setOpenSession, clearOpenSession, setLastEntry, incrementSession } = useEvent();
   const { weather } = useLocationAndWeather();
   const { displayPressure, pressureUnit, inputToPsi, displayTemp, tempUnit, settings } = useSettings();
   const ambientTempC = route?.params?.ambientTempC ?? weather?.temp_c ?? null;
   const fourCornerCold = settings.four_corner_cold;
+  const coldStartRef = useRef<number>(Date.now());
+  const hotStartRef = useRef<number>(Date.now());
 
   const mode: Mode = route?.params?.mode === 'hot' ? 'hot' : 'cold';
 
@@ -102,6 +104,10 @@ export default function QuickLogScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (openSession) setHotValues(seedHotValues());
   }, [openSession, seedHotValues]);
+
+  useEffect(() => {
+    if (mode === 'hot') hotStartRef.current = Date.now();
+  }, [mode]);
 
   const [submitting, setSubmitting] = useState(false);
   const oem = activeEvent?.vehicle ?? null;
@@ -237,6 +243,9 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       saved_at:          new Date().toISOString(),
       ambient_temp_c:    ambientTempC ?? undefined,
       ambient_source:    ambientTempC != null ? 'auto' : undefined,
+      cold_entry_duration_seconds: Math.round((Date.now() - coldStartRef.current) / 1000),
+      is_hidden: !settings.community_contributions,
+      historic_date: route?.params?.historic_date ?? undefined,
     };
 
     await setOpenSession(session);
@@ -299,6 +308,10 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       ambient_temp_c:       openSession.ambient_session_start ?? openSession.ambient_temp_c,
       ambient_temp_end_c:   weather?.temp_c ?? null,
       ambient_source:       openSession.ambient_source as 'auto' | 'manual',
+      hot_entry_duration_seconds: Math.round((Date.now() - hotStartRef.current) / 1000),
+      cold_entry_duration_seconds: openSession.cold_entry_duration_seconds ?? null,
+      is_hidden: openSession.is_hidden ?? !settings.community_contributions,
+      created_at: openSession.historic_date ?? new Date().toISOString(),
     };
 
     const signalScore = computeSignalScore(entry, activeEvent.tire_front.id);
@@ -306,14 +319,27 @@ export default function QuickLogScreen({ navigation, route }: Props) {
     try {
       await supabase
         .from('pressure_entries')
-        .insert({ ...entry, signal_score: signalScore });
+        .insert({ ...entry, signal_score: signalScore, created_at: openSession.historic_date ?? new Date().toISOString() });
     } catch {}
 
     setLastEntry(entry);
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
-    navigation.navigate('Confirmation');
+    if (openSession.historic_date) {
+      navigation.replace('HistoricEventSetup', {
+        vehicle:        activeEvent.vehicle,
+        tireFront:      activeEvent.tire_front,
+        tireRear:       activeEvent.tire_rear,
+        tireSetName:    activeEvent.tire_set_name ?? '',
+        selectedTrack:  activeEvent.track,
+        selectedConfig: activeEvent.track_config ?? null,
+        sessionType:    activeEvent.session_type,
+        prefilled:      true,
+      });
+    } else {
+      navigation.navigate('Confirmation');
+    }
   }
 
   async function handleSkipHot() {
@@ -336,6 +362,9 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       session_type:   activeEvent.session_type,
       ambient_temp_c: openSession.ambient_session_start ?? openSession.ambient_temp_c,
       ambient_source: openSession.ambient_source as 'auto' | 'manual',
+      hot_entry_duration_seconds: Math.round((Date.now() - hotStartRef.current) / 1000),
+      cold_entry_duration_seconds: openSession.cold_entry_duration_seconds ?? null,
+      created_at: openSession.historic_date ?? new Date().toISOString(),
     };
 
     const signalScore = computeSignalScore(entry, activeEvent.tire_front.id);
@@ -350,7 +379,20 @@ export default function QuickLogScreen({ navigation, route }: Props) {
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
-    navigation.navigate('Confirmation');
+    if (openSession.historic_date) {
+      navigation.replace('HistoricEventSetup', {
+        vehicle:        activeEvent.vehicle,
+        tireFront:      activeEvent.tire_front,
+        tireRear:       activeEvent.tire_rear,
+        tireSetName:    activeEvent.tire_set_name ?? '',
+        selectedTrack:  activeEvent.track,
+        selectedConfig: activeEvent.track_config ?? null,
+        sessionType:    activeEvent.session_type,
+        prefilled:      true,
+      });
+    } else {
+      navigation.navigate('Confirmation');
+    }
   }
 
   const dF = coldDeltaPsi('front');
@@ -368,7 +410,14 @@ export default function QuickLogScreen({ navigation, route }: Props) {
               Step 1 of 2 · cold pressures
             </Text>
           </View>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => {
+            if (openSession) {
+              setActiveTab('history');
+              navigation.navigate('HistoryTab');
+            } else {
+              navigation.navigate('EventSetup');
+            }
+          }}>
             <Text style={[typography.caption, { color: colors.accent }]}>Cancel</Text>
           </TouchableOpacity>
         </View>
@@ -509,9 +558,12 @@ export default function QuickLogScreen({ navigation, route }: Props) {
             Step 2 of 2 · hot pressures — four corners
           </Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={[typography.caption, { color: colors.accent }]}>Cancel</Text>
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => {
+            setActiveTab('history');
+            navigation.navigate('HistoryTab');
+          }}>
+            <Text style={[typography.caption, { color: colors.accent }]}>Cancel</Text>
+          </TouchableOpacity>
       </View>
 
       {openSession && openSession.ambient_session_start === undefined && (
@@ -647,7 +699,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
     borderBottomWidth: 0.5, borderBottomColor: colors.border,
   },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl },
+  content: { padding: spacing.lg, paddingBottom: spacing.lg },
 
   // Axle vertical layout
   axleWrap: {
@@ -662,6 +714,8 @@ const styles = StyleSheet.create({
   axleArrowLabel: {
     fontSize: 9, color: colors.textMuted,
     letterSpacing: 0.04,
+    width: 40,
+    textAlign: 'center',
   },
   axleBoxes: { flex: 1, gap: spacing.sm },
 
@@ -703,18 +757,18 @@ const styles = StyleSheet.create({
 
   // Hot reference strip
   coldRefRow: {
-    flexDirection: 'row', gap: spacing.sm,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
+    flexDirection: 'row', gap: 4,
+    paddingHorizontal: spacing.md, paddingVertical: 4,
     backgroundColor: colors.bgHighlight,
     borderBottomWidth: 0.5, borderBottomColor: colors.border,
   },
   refChip: {
     flex: 1, backgroundColor: colors.bgCard,
     borderRadius: radius.sm, borderWidth: 0.5, borderColor: colors.border,
-    padding: spacing.sm, alignItems: 'center',
+    paddingVertical: 4, paddingHorizontal: 4, alignItems: 'center',
   },
-  refChipLabel: { fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
-  refChipVal: { fontSize: 14, fontWeight: '500', color: colors.textPrimary, fontVariant: ['tabular-nums'] as any },
+  refChipLabel: { fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 1 },
+  refChipVal: { fontSize: 11, fontWeight: '500', color: colors.textPrimary, fontVariant: ['tabular-nums'] as any },
 
   // Hot corner grid
   cornerBox: {

@@ -126,7 +126,7 @@ export default function AuthScreen({ savedEmail, onSendLink }: Props) {
         {/* Logo / wordmark */}
         <View style={styles.brandRow}>
           <Text style={styles.brandName}>TrackPressure</Text>
-          <Text style={styles.brandSub}>Tyre data for track drivers</Text>
+          <Text style={styles.brandSub}>Tire data for track drivers</Text>
         </View>
 
         {/* Returning user prompt */}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet,
@@ -48,6 +48,8 @@ export default function ColdCornerEntryScreen({ navigation }: Props) {
   const [activeField,  setActiveField]  = useState<'pressure' | 'temp'>('pressure');
 
   const [saving, setSaving] = useState(false);
+  // Start cold entry timer on mount
+  const coldStartRef = useRef<number>(Date.now());
 
   // ── Numpad handler ────────────────────────────────────────────────────────
   function handleNumPress(key: string) {
@@ -99,6 +101,7 @@ export default function ColdCornerEntryScreen({ navigation }: Props) {
       mode: 'cold',
       pressures,
       temps,
+      coldStartedAt: coldStartRef.current,
     });
   }
 

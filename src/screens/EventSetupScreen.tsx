@@ -16,7 +16,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 const SESSION_TYPES: { key: SessionType; label: string }[] = [
   { key: 'hpde',        label: 'HPDE' },
   { key: 'time_attack', label: 'Time attack' },
-  { key: 'club_race',   label: 'Club race' },
+  //{ key: 'club_race',   label: 'Club race' },
   { key: 'practice',    label: 'Practice' },
   { key: 'qualifying',  label: 'Qualifying' },
   { key: 'race',        label: 'Race' },
@@ -25,10 +25,9 @@ const SESSION_TYPES: { key: SessionType; label: string }[] = [
 type Props = NativeStackScreenProps<any, 'EventSetup'>;
 
 export default function EventSetupScreen({ navigation, route }: Props) {
-  const { weather, nearbyTracks, allTracksSorted, loading } = useLocationAndWeather();
+  const { weather, nearbyTracks, allTracksSorted, loading, prefetchLocation  } = useLocationAndWeather();
   const { setActiveEvent } = useEvent();
-  const { settings } = useSettings();
-  const { displayTemp, tempUnit, displayDistance, distanceUnit } = useSettings();
+  const { settings, displayTemp, tempUnit, displayDistance, distanceUnit } = useSettings();
 
   const vehicle         = route.params?.vehicle;
   const tireFront       = route?.params?.tireFront;
@@ -43,6 +42,10 @@ export default function EventSetupScreen({ navigation, route }: Props) {
   const [trackDropdownOpen, setTrackDropdownOpen] = useState(false);
 
   const detectedTrack = nearbyTracks[0];
+
+  useEffect(() => {
+    prefetchLocation();
+  }, []);
 
   useEffect(() => {
     if (detectedTrack && !selectedTrack) {
@@ -87,14 +90,14 @@ export default function EventSetupScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         </View>
 
-        {/* Read-only car + tyre pills */}
+        {/* Read-only car + tire pills */}
         <View style={styles.pillRow}>
           {vehicle && (
             <ContextPill label={`${vehicle.make} ${vehicle.model}`} auto={false} />
           )}
           {tireSetName ? <ContextPill label={tireSetName} auto={false} /> : null}
           <TouchableOpacity onPress={handleChangeTyres}>
-            <Text style={styles.changeLink}>Change tyres</Text>
+            <Text style={styles.changeLink}>Change tires</Text>
           </TouchableOpacity>
         </View>
 
@@ -131,7 +134,7 @@ export default function EventSetupScreen({ navigation, route }: Props) {
               </Text>
               <Text style={styles.selectSub}>
                 {selectedTrack
-                  ? `${selectedTrack.region}, ${selectedTrack.country}`
+                  ? `${selectedTrack.state ?? selectedTrack.region ?? ''}, ${selectedTrack.country}`
                   : 'Tap to select'}
               </Text>
             </View>
@@ -157,7 +160,7 @@ export default function EventSetupScreen({ navigation, route }: Props) {
                     {t.name}
                   </Text>
                   <Text style={styles.dropdownOptionSub}>
-                    {t.region}, {t.country}
+                    {t.state}, {t.country}
                   </Text>
                 </TouchableOpacity>
               )) : (

@@ -32,6 +32,14 @@ export function useSettings(refreshTrigger?: number) {
     }
   }
 
+  function inputToPsi(val: number): number {
+    switch (settings.pressure_unit) {
+      case 'bar': return Math.round((val / 0.0689476) * 10) / 10;
+      case 'kpa': return Math.round((val / 6.89476) * 10) / 10;
+      default:    return val;
+    }
+  }
+
   // ── Temperature ───────────────────────────────────────────────────────────
   function displayTemp(celsius: number): string {
     switch (settings.temperature_unit) {
@@ -44,14 +52,13 @@ export function useSettings(refreshTrigger?: number) {
     return settings.temperature_unit === 'f' ? '°F' : '°C';
   }
 
-  function inputToPsi(val: number): number {
-    switch (settings.pressure_unit) {
-      case 'bar': return Math.round((val / 0.0689476) * 10) / 10;
-      case 'kpa': return Math.round((val / 6.89476) * 10) / 10;
-      default:    return val;
-    }
+  function inputToC(val: number): number {
+    return settings.temperature_unit === 'f'
+      ? Math.round(((val - 32) * 5/9) * 10) / 10
+      : val;
   }
 
+  // ── Distance ───────────────────────────────────────────────────────────
   function displayDistance(km: number): string {
     switch (settings.distance_unit) {
       case 'mi': return (km * 0.621371).toFixed(1);
@@ -67,9 +74,10 @@ export function useSettings(refreshTrigger?: number) {
     settings,
     displayPressure,
     pressureUnit,
+    inputToPsi,
     displayTemp,
     tempUnit,
-    inputToPsi,
+    inputToC,
     displayDistance,
     distanceUnit,
   };

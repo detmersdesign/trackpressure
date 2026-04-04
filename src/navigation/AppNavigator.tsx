@@ -18,7 +18,10 @@ import SettingsScreen          from '../screens/SettingsScreen';
 import EditGarageVehicleScreen    from '../screens/EditGarageVehicleScreen';
 import ColdCornerEntryScreen    from '../screens/ColdCornerEntryScreen';
 import HotCornerEntryScreen     from '../screens/HotCornerEntryScreen';
+import HotGradientEntryScreen   from '../screens/HotGradientEntryScreen';
 import CornerReviewScreen       from '../screens/CornerReviewScreen';
+import FeedbackScreen           from '../screens/FeedbackScreen';
+import HistoricEventSetupScreen from '../screens/HistoricEventSetupScreen';
 
 // ── Stack navigators ──────────────────────────────────────────────────────────
 
@@ -31,10 +34,12 @@ function LogStackNav() {
       <LogStack.Screen name="QuickLog"           component={QuickLogScreen} />
       <LogStack.Screen name="ColdCornerEntry"    component={ColdCornerEntryScreen} />
       <LogStack.Screen name="HotCornerEntry"     component={HotCornerEntryScreen} />
-      <LogStack.Screen name="CornerReview"       component={CornerReviewScreen} getId={({ params }) => (params as any)?.mode} />
+      <LogStack.Screen name="HotGradientEntry"   component={HotGradientEntryScreen} />
+      <LogStack.Screen name="CornerReview"       component={CornerReviewScreen} />
       <LogStack.Screen name="ColdSaved"          component={ColdSavedScreen} />
       <LogStack.Screen name="Confirmation"       component={ConfirmationScreen} />
       <LogStack.Screen name="Garage"             component={GarageScreen} />
+      <LogStack.Screen name="Feedback"           component={FeedbackScreen} />
     </LogStack.Navigator>
   );
 }
@@ -48,9 +53,11 @@ function HistoryStackNav() {
       <HistoryStack.Screen name="QuickLog"          component={QuickLogScreen} />
       <HistoryStack.Screen name="ColdCornerEntry"   component={ColdCornerEntryScreen} />
       <HistoryStack.Screen name="HotCornerEntry"    component={HotCornerEntryScreen} />
-      <HistoryStack.Screen name="CornerReview"      component={CornerReviewScreen} getId={({ params }) => (params as any)?.mode}/>
+      <HistoryStack.Screen name="HotGradientEntry"  component={HotGradientEntryScreen} />
+      <HistoryStack.Screen name="CornerReview"      component={CornerReviewScreen} />
       <HistoryStack.Screen name="ColdSaved"         component={ColdSavedScreen} />
       <HistoryStack.Screen name="Confirmation"      component={ConfirmationScreen} />
+      <HistoryStack.Screen name="Feedback"          component={FeedbackScreen} />
     </HistoryStack.Navigator>
   );
 }
@@ -63,10 +70,13 @@ function GarageStackNav() {
       <GarageStack.Screen name="Settings"            component={SettingsScreen} />
       <GarageStack.Screen name="EditGarageVehicle"   component={EditGarageVehicleScreen} />
       <GarageStack.Screen name="EventSetup"          component={EventSetupScreen} />
+      <GarageStack.Screen name="HistoricEventSetup"  component={HistoricEventSetupScreen} />
+      <GarageStack.Screen name="Feedback"            component={FeedbackScreen} />
       <GarageStack.Screen name="QuickLog"            component={QuickLogScreen} />
       <GarageStack.Screen name="ColdCornerEntry"     component={ColdCornerEntryScreen} />
       <GarageStack.Screen name="HotCornerEntry"      component={HotCornerEntryScreen} />
-      <GarageStack.Screen name="CornerReview"        component={CornerReviewScreen} getId={({ params }) => (params as any)?.mode}/>
+      <GarageStack.Screen name="HotGradientEntry"    component={HotGradientEntryScreen} />
+      <GarageStack.Screen name="CornerReview"        component={CornerReviewScreen} />
       <GarageStack.Screen name="ColdSaved"           component={ColdSavedScreen} />
       <GarageStack.Screen name="Confirmation"        component={ConfirmationScreen} />
     </GarageStack.Navigator>

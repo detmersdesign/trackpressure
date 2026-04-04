@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, TextInput,
   StyleSheet, Dimensions, ActivityIndicator, Alert,
-  Modal, ScrollView,
+  Modal, ScrollView, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,7 +21,7 @@ type Props = {
 };
 
 export default function GarageScreen({ navigation, route }: Props) {
-  const { setActiveEvent, activeEvent, setActiveTab } = useEvent();
+  const { setActiveEvent, activeEvent, setActiveTab, prefetchLocation } = useEvent();
 
   const [garageVehicles, setGarageVehicles] = useState<GarageVehicle[]>([]);
   const [loading, setLoading]               = useState(true);
@@ -32,6 +32,11 @@ export default function GarageScreen({ navigation, route }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
+
+  // ── Get location ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    prefetchLocation();
+  }, []);
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -77,7 +82,7 @@ export default function GarageScreen({ navigation, route }: Props) {
 
       setGarageVehicles(enriched);
 
-      // Default tyre set selection
+      // Default tire set selection
       const defaults: Record<string, string> = {};
       enriched.forEach(gv => {
         const defaultSet = gv.tire_sets?.find(ts => ts.is_default) ?? gv.tire_sets?.[0];
@@ -88,18 +93,18 @@ export default function GarageScreen({ navigation, route }: Props) {
     setLoading(false);
   }, [userId]);
 
-useEffect(() => { fetchGarage(); }, [fetchGarage]);
+  useEffect(() => { fetchGarage(); }, [fetchGarage]);
 
-const [settingsVersion, setSettingsVersion] = useState(0);
-const { displayPressure, pressureUnit } = useSettings(settingsVersion);
+  const [settingsVersion, setSettingsVersion] = useState(0);
+  const { displayPressure, pressureUnit } = useSettings(settingsVersion);
 
-useEffect(() => {
-  const unsubscribe = navigation.addListener('focus', () => {
-    fetchGarage();
-    setSettingsVersion(v => v + 1);
-  });
-  return unsubscribe;
-}, [navigation, fetchGarage]);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchGarage();
+      setSettingsVersion(v => v + 1);
+    });
+    return unsubscribe;
+  }, [navigation, fetchGarage]);
 
   // ── Handle nav params (focus card / open dropdown) ────────────────────────
   useEffect(() => {
@@ -125,11 +130,11 @@ useEffect(() => {
     const tireSetId = selectedTireSetIds[gv.id];
     const tireSet   = gv.tire_sets?.find(ts => ts.id === tireSetId) ?? gv.tire_sets?.[0];
     if (!tireSet?.tire_front || !tireSet?.tire_rear) {
-      Alert.alert('Please add a tyre set to this car first');
+      Alert.alert('Please add a tire set to this car first');
       return;
     }
 
-    // Store selected garage vehicle index for "Change tyres" back-nav
+    // Store selected garage vehicle index for "Change tires" back-nav
     navigation.navigate('EventSetup', {
       vehicle,
       tireFront:        tireSet.tire_front,
@@ -186,14 +191,14 @@ useEffect(() => {
 
           <View style={styles.divider} />
 
-          {/* Tyre set dropdown */}
-          <Text style={styles.sectionLabel}>Tyre set</Text>
+          {/* Tire set dropdown */}
+          <Text style={styles.sectionLabel}>Tire set</Text>
           {tireSets.length === 0 ? (
             <TouchableOpacity
               style={styles.addTyrePrompt}
               onPress={() => navigation.navigate('EditGarageVehicle', { garageVehicle: gv })}
             >
-              <Text style={styles.addTyrePromptText}>+ Add tyre set</Text>
+              <Text style={styles.addTyrePromptText}>+ Add tire set</Text>
             </TouchableOpacity>
           ) : (
             <>
@@ -204,7 +209,7 @@ useEffect(() => {
                 <Text style={styles.dropdownVal}>
                   {selectedTs
                     ? selectedTs.name
-                    : 'Select tyre set'}
+                    : 'Select tire set'}
                 </Text>
                 <Text style={styles.dropdownArrow}>{ddOpen ? '▲' : '▼'}</Text>
               </TouchableOpacity>
@@ -248,7 +253,7 @@ useEffect(() => {
           ) : null}
 
           {/* Actions */}
-          <VehicleSilhouette category={vehicle?.silhouette_category} height={200} />
+          <VehicleSilhouette category={vehicle?.silhouette_category} height={150} />
 
           <TouchableOpacity
             style={styles.startBtn}
@@ -261,6 +266,14 @@ useEffect(() => {
             style={[styles.editBtn, { marginTop: spacing.sm, borderColor: colors.accent }]}
             onPress={() => {
               const defaultTireSet = gv.tire_sets?.find(ts => ts.is_default) ?? gv.tire_sets?.[0];
+              if (!defaultTireSet) {
+                Alert.alert(
+                  'No tire set',
+                  'Add a tire set to this car before viewing history.',
+                  [{ text: 'OK' }]
+                );
+                return;
+              }
               setActiveTab('history');
               navigation.navigate('HistoryTab', {
                 screen: 'History',
@@ -281,6 +294,28 @@ useEffect(() => {
             <Text style={styles.editBtnText}>Edit car</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.historicBtn}
+            onPress={() => {
+              const vehicle = gv.vehicle;
+              if (!vehicle) { Alert.alert('Vehicle data missing'); return; }
+              const tireSetId = selectedTireSetIds[gv.id];
+              const tireSet   = gv.tire_sets?.find(ts => ts.id === tireSetId) ?? gv.tire_sets?.[0];
+              if (!tireSet?.tire_front || !tireSet?.tire_rear) {
+                Alert.alert('No tire set', 'Add a tire set to this car before logging a past session.', [{ text: 'OK' }]);
+                return;
+              }
+              navigation.navigate('HistoricEventSetup', {
+                vehicle,
+                tireFront:    tireSet.tire_front,
+                tireRear:     tireSet.tire_rear,
+                tireSetName:  tireSet.name,
+              });
+            }}
+          >
+            <Text style={styles.historicBtnText}>+ Log past session</Text>
+          </TouchableOpacity>
+
         </View>
       </View>
     );
@@ -299,7 +334,7 @@ useEffect(() => {
             style={styles.startBtn}
             onPress={() => setAddModalVisible(true)}
           >
-            <Text style={styles.startBtnText}>+ Add vehicle</Text>
+            <Text style={styles.startBtnText}>  + Add vehicle  </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -314,24 +349,43 @@ useEffect(() => {
       {/* Top bar */}
       <View style={styles.topBar}>
         <Text style={typography.heading}>Garage</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-          <Text style={styles.gearIcon}>⚙</Text>
-        </TouchableOpacity>
+        <View style={styles.topBarRight}>
+          <TouchableOpacity
+            style={styles.feedbackPill}
+            onPress={() => navigation.navigate('Feedback')}
+          >
+            <View style={styles.feedbackDot} />
+            <Text style={styles.feedbackPillText}>Feedback</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+            <Text style={styles.gearIcon}>⚙</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
-        <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xl }} />
+        <View style={styles.splashWrap}>
+          <Image
+            source={require('../../assets/splash.png')}
+            style={styles.splashLogo}
+            resizeMode="contain"
+          />
+          <ActivityIndicator
+            color={colors.accent}
+            style={{ marginTop: spacing.lg }}
+          />
+        </View>
       ) : garageVehicles.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Welcome to TrackPressure</Text>
           <Text style={styles.emptySubtitle}>
-            Add your first car to get started logging tyre pressures
+            Add your first car to get started logging tire pressures
           </Text>
           <TouchableOpacity
             style={styles.startBtn}
             onPress={() => setAddModalVisible(true)}
           >
-            <Text style={styles.startBtnText}>+ Add your first car</Text>
+            <Text style={styles.startBtnText}>  + Add your first car  </Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -399,6 +453,7 @@ function AddVehicleModal({
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [userYear, setUserYear] = useState('');
   const userYearRef = useRef<TextInput>(null);
+  const { displayPressure, pressureUnit } = useSettings();
 
   useEffect(() => {
     supabase
@@ -491,7 +546,7 @@ function AddVehicleModal({
                 {v.year_end ? `${v.year_start}–${v.year_end}` : `${v.year_start}`} {v.make} {v.model} {v.trim}
               </Text>
               <Text style={styles.vehicleOptionSub}>
-                OEM {v.oem_pressure_front} / {v.oem_pressure_rear} PSI
+                OEM {displayPressure(v.oem_pressure_front)} / {displayPressure(v.oem_pressure_rear)} {pressureUnit()}
               </Text>
             </TouchableOpacity>
           ))}
@@ -541,6 +596,15 @@ function AddVehicleModal({
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  splashWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splashLogo: {
+    width: SCREEN_W * 0.6,
+    height: SCREEN_W * 0.6,
+  },
   topBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
@@ -551,6 +615,22 @@ const styles = StyleSheet.create({
     width: SCREEN_W,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
+  },
+  topBarRight: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+  },
+  feedbackPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.bgCard,
+    borderRadius: 20, borderWidth: 0.5, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  feedbackDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: colors.warning,
+  },
+  feedbackPillText: {
+    fontSize: 12, color: colors.textSecondary,
   },
   card: {
     backgroundColor: colors.bgCard,
@@ -636,9 +716,16 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginTop: spacing.sm,
   },
   editBtnText: { fontSize: 13, color: colors.textSecondary },
+  historicBtn: {
+    alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs,
+  },
+  historicBtnText: {
+    fontSize: 12, color: colors.textMuted, textDecorationLine: 'underline',
+  },
   dotsRow: {
     flexDirection: 'row', justifyContent: 'center',
-    gap: spacing.sm, paddingVertical: spacing.md,
+    gap: spacing.sm, paddingVertical: spacing.sm,
+    marginBottom: 4,
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.accent },
@@ -648,7 +735,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgInput,
     borderRadius: radius.md, borderWidth: 0.5, borderColor: colors.border,
     padding: spacing.md, fontSize: 14, color: colors.textPrimary,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   vehicleOption: {
     padding: spacing.md,

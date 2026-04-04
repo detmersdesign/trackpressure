@@ -6,18 +6,18 @@ import { PressureEntry, TireTarget, Recommendation } from '../types';
 // defaults are used as fallback when context is unavailable.
 const ATM_PSI    = 14.696;
 const DEFAULT_AMBIENT_F  = 68;   // 20°C — conservative default
-const DEFAULT_TYRE_TEMP_F = 140; // typical HPDE operating target
+const DEFAULT_TIRE_TEMP_F = 140; // typical HPDE operating target
 
 function fToRankine(f: number): number { return f + 459.67; }
 function roundHalf(v: number): number  { return Math.round(v * 2) / 2; }
 
 // Predict hot pressure from a cold set using the ideal gas law,
 // rounded to the nearest 0.5 PSI so it seeds the stepper on a valid step.
-// Optionally accepts ambient and tyre temp overrides from the weather hook.
+// Optionally accepts ambient and tire temp overrides from the weather hook.
 export function predictHotRounded(
   coldPsi: number,
   ambientF: number = DEFAULT_AMBIENT_F,
-  tyreTempF: number = DEFAULT_TYRE_TEMP_F
+  tyreTempF: number = DEFAULT_TIRE_TEMP_F
 ): number {
   const raw = (coldPsi + ATM_PSI) * (fToRankine(tyreTempF) / fToRankine(ambientF)) - ATM_PSI;
   return roundHalf(raw);

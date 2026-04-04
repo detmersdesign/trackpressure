@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import 'react-native-gesture-handler';
 import { EventProvider } from './src/hooks/useEventContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -13,6 +14,8 @@ import { supabase } from './src/lib/supabase';
 function Root() {
   const { session, savedEmail, loading, sendMagicLink } = useAuth();
   useEffect(() => {
+      NavigationBar.setVisibilityAsync('hidden');
+    
       // Handle deep link when app is already open
       const subscription = Linking.addEventListener('url', ({ url }) => {
         if (url) {

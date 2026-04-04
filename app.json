@@ -1,23 +1,32 @@
 {
   "expo": {
-    "name": "TrackPressure",
+    "name": "TrackPressures",
     "slug": "trackpressure",
-    "version": "1.0.0",
+    "version": "1.2.5",
+    "scheme": "trackpressure",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
       "backgroundColor": "#0F0F0F"
     },
-    "scheme": "trackpressure",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourname.trackpressure",
+      "bundleIdentifier": "com.detmersdesign.trackpressure",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "TrackPressure uses your location to detect nearby tracks and fetch current weather conditions."
+        "NSLocationWhenInUseUsageDescription": "TrackPressures uses your location to detect nearby tracks and fetch current weather conditions.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.yourname.trackpressure",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F0F0F"
+      },
+      "package": "com.detmersdesign.trackpressure",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -29,7 +38,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "TrackPressure uses your location to detect nearby tracks and fetch current weather conditions."
+          "locationWhenInUsePermission": "TrackPressures uses your location to detect nearby tracks and fetch current weather conditions."
         }
       ]
     ],

@@ -10,6 +10,7 @@ import { useEvent } from '../hooks/useEventContext';
 import { useSettings } from '../hooks/useSettings';
 import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
 import { CommonActions } from '@react-navigation/native';
+import { supabase } from '../lib/supabase';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -142,7 +143,7 @@ export default function ColdSavedScreen({ navigation }: Props) {
         {/* Return prompt */}
         <View style={styles.promptBox}>
           <Text style={styles.promptText}>
-            Have Fun Driving — Come back and log hot data while the tyres are still warm.
+            Have Fun Driving — Come back and log hot data while the tires are still warm.
           </Text>
         </View>
 
@@ -159,17 +160,42 @@ export default function ColdSavedScreen({ navigation }: Props) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnPrimary]}
-            onPress={() => settings.pyrometer_enabled
-              ? navigation.navigate('HotCornerEntry')
-              : navigation.navigate('QuickLog', { mode: 'hot' })
-            }
+            onPress={() => {
+              if (settings.pyrometer_gradient) {
+                navigation.navigate('HotGradientEntry');
+              } else if (settings.pyrometer_enabled) {
+                navigation.navigate('HotCornerEntry');
+              } else {
+                navigation.navigate('QuickLog', { mode: 'hot' });
+              }
+            }}
           >
             <Text style={styles.actionBtnPrimaryText}>Enter hot now</Text>
           </TouchableOpacity>
         </View>
         <TouchableOpacity
           style={styles.finishBtn}
-          onPress={() => {
+          onPress={async () => {
+            // Save cold-only entry before clearing session
+            const { data: { user } } = await supabase.auth.getUser();
+            await supabase.from('pressure_entries').insert({
+              user_id:        user?.id,
+              vehicle_id:     session.event.vehicle.id,
+              tire_id:        session.event.tire_front.id,
+              track_id:       session.event.track.id,
+              session_type:   session.event.session_type,
+              cold_front_psi: session.cold_front_psi,
+              cold_rear_psi:  session.cold_rear_psi,
+              cold_fl_psi:    session.cold_fl_psi    ?? null,
+              cold_fr_psi:    session.cold_fr_psi    ?? null,
+              cold_rl_psi:    session.cold_rl_psi    ?? null,
+              cold_rr_psi:    session.cold_rr_psi    ?? null,
+              ambient_temp_c: session.ambient_session_start ?? session.ambient_temp_c,
+              ambient_source: session.ambient_source as 'auto' | 'manual',
+              is_hidden:      session.is_hidden ?? false,
+              signal_score:   0.5,
+              created_at: session.historic_date ?? new Date().toISOString(),
+            });
             setActiveTab('garage');
             navigation.dispatch(
               CommonActions.reset({

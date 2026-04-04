@@ -40,6 +40,7 @@ export interface UserSettings {
   community_contributions: boolean;
   four_corner_cold:        boolean;
   pyrometer_enabled:       boolean;
+  pyrometer_gradient:      boolean;
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   community_contributions: true,
   four_corner_cold:        false,
   pyrometer_enabled:       false,
+  pyrometer_gradient:      false,
 };
 
 export interface Vehicle {
@@ -89,7 +91,8 @@ export interface Track {
   id: string;
   name: string;
   country: string;
-  region: string;
+  region?: string;
+  state?: string;
   latitude: number;
   longitude: number;
   radius_meters?: number;
@@ -142,15 +145,49 @@ export interface PressureEntry {
   hot_front_psi?: number;
   hot_rear_psi?: number;
 
+  cold_fl_psi?: number;
+  cold_fr_psi?: number;
+  cold_rl_psi?: number;
+  cold_rr_psi?: number;
+
+  // Tyre temperatures — Tier 1 (single mid temp per corner)
+  tyre_temp_hot_fl_c?: number;
+  tyre_temp_hot_fr_c?: number;
+  tyre_temp_hot_rl_c?: number;
+  tyre_temp_hot_rr_c?: number;
+  tyre_temp_cold_fl_c?: number;
+  tyre_temp_cold_fr_c?: number;
+  tyre_temp_cold_rl_c?: number;
+  tyre_temp_cold_rr_c?: number;
+
+  // Tyre temperatures — Tier 2 (inner/mid/outer per corner)
+  tyre_temp_hot_fl_inner_c?: number;
+  tyre_temp_hot_fl_mid_c?: number;
+  tyre_temp_hot_fl_outer_c?: number;
+  tyre_temp_hot_fr_inner_c?: number;
+  tyre_temp_hot_fr_mid_c?: number;
+  tyre_temp_hot_fr_outer_c?: number;
+  tyre_temp_hot_rl_inner_c?: number;
+  tyre_temp_hot_rl_mid_c?: number;
+  tyre_temp_hot_rl_outer_c?: number;
+  tyre_temp_hot_rr_inner_c?: number;
+  tyre_temp_hot_rr_mid_c?: number;
+  tyre_temp_hot_rr_outer_c?: number;
+
   ambient_temp_c?: number;
+  ambient_temp_end_c?: number;
+  ambient_session_start?: number;
   ambient_source?: 'auto' | 'manual';
   session_type: SessionType;
   notes?: string;
   signal_score?: number;
   in_target_range?: boolean;
   delta_consistent?: boolean;
-  flag_count: number;
-  is_outlier: boolean;
+  flag_count?: number;
+  is_outlier?: boolean;
+  is_hidden?: boolean;
+  cold_entry_duration_seconds?: number;
+  hot_entry_duration_seconds?: number;
   created_at: string;
 }
 
@@ -164,13 +201,14 @@ export type SessionType =
   | 'other';
 
 export interface ActiveEvent {
-  vehicle: Vehicle;
-  tire_front: Tire;
-  tire_rear: Tire;
-  track: Track;
-  track_config?: TrackConfig;
-  session_type: SessionType;
-  started_at: string;
+  vehicle:        Vehicle;
+  tire_front:     Tire;
+  tire_rear:      Tire;
+  track:          Track;
+  track_config?:  TrackConfig;
+  session_type:   SessionType;
+  started_at:     string;
+  tire_set_name?: string;
 }
 
 // Persisted to AsyncStorage when cold pressures are saved.
@@ -197,6 +235,10 @@ export interface OpenSession {
   ambient_temp_c?: number;
   ambient_session_start?: number;
   ambient_source?: 'auto' | 'manual';
+  cold_started_at?: number;    // Date.now() timestamp, set when cold entry screen mounts
+  cold_entry_duration_seconds?: number;  // calculated at cold submit, carried to hot submit
+  is_hidden?: boolean;
+  historic_date?: string;    // ISO string — if present, used as created_at on insert
 }
 
 export interface ConsensusPressure {

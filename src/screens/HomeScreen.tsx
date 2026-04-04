@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, radius, globalStyles } from '../lib/theme';
 import { ContextPill } from '../components/ContextPill';
 import { useEvent } from '../hooks/useEventContext';
+import { useSettings } from '../hooks/useSettings';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -20,6 +21,7 @@ function minutesAgo(isoString: string): string {
 
 export default function HomeScreen({ navigation }: Props) {
   const { openSession, clearOpenSession, activeEvent, setActiveTab } = useEvent();
+  const { settings } = useSettings();
 
   useEffect(() => {
       if (!openSession) {
@@ -85,7 +87,15 @@ export default function HomeScreen({ navigation }: Props) {
 
             <TouchableOpacity
               style={styles.resumeBtn}
-              onPress={() => navigation.navigate('QuickLog', { mode: 'hot' })}
+              onPress={() => {
+                if (settings.pyrometer_gradient) {
+                  navigation.navigate('HotGradientEntry');
+                } else if (settings.pyrometer_enabled) {
+                  navigation.navigate('HotCornerEntry');
+                } else {
+                  navigation.navigate('QuickLog', { mode: 'hot' });
+                }
+              }}
             >
               <Text style={styles.resumeBtnText}>Enter hot pressures →</Text>
             </TouchableOpacity>

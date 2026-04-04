@@ -8,6 +8,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, typography, spacing, radius, globalStyles } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import { GarageVehicle, GarageTireSet, Tire } from '../types';
+import { useSettings } from '../hooks/useSettings';
 
 type Props = NativeStackScreenProps<any, 'EditGarageVehicle'>;
 
@@ -19,9 +20,78 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
   const [userYear, setUserYear] = useState(garageVehicle.user_year?.toString() ?? '');
   const [notes, setNotes]       = useState(garageVehicle.notes ?? '');
   const userYearRef = useRef<TextInput>(null);
-  const [saving, setSaving]             = useState(false);
+  const [saving, setSaving]                 = useState(false);
   const [addTyreVisible, setAddTyreVisible] = useState(false);
   const [localTireSets, setLocalTireSets]   = useState<GarageTireSet[]>(garageVehicle.tire_sets ?? []);
+  const { displayPressure, pressureUnit } = useSettings();
+
+  // ── All garage vehicles for reordering ───────────────────────────────────
+  const [allGarageVehicles, setAllGarageVehicles] = useState<{ id: string; display_order: number }[]>([]);
+  const [currentOrder, setCurrentOrder]           = useState(garageVehicle.display_order);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data?.user?.id) return;
+      const { data: gvs } = await supabase
+        .from('garage_vehicles')
+        .select('id, display_order')
+        .eq('user_id', data.user.id)
+        .order('display_order', { ascending: true });
+      if (gvs) setAllGarageVehicles(gvs);
+    });
+  }, []);
+
+  async function handleMoveUp() {
+    const sorted = [...allGarageVehicles].sort((a, b) => a.display_order - b.display_order);
+    const idx    = sorted.findIndex(v => v.id === garageVehicle.id);
+    if (idx <= 0) return;
+
+    // Swap positions in the sorted array
+    const newSorted = [...sorted];
+    const temp      = newSorted[idx];
+    newSorted[idx]  = newSorted[idx - 1];
+    newSorted[idx - 1] = temp;
+
+    // Write new sequential order values based on array position
+    await Promise.all(
+      newSorted.map((v, i) =>
+        supabase.from('garage_vehicles').update({ display_order: i + 1 }).eq('id', v.id)
+      )
+    );
+
+    // Update local state with new sequential values
+    const updated = newSorted.map((v, i) => ({ ...v, display_order: i + 1 }));
+    setAllGarageVehicles(updated);
+    const newIdx = updated.findIndex(v => v.id === garageVehicle.id);
+    setCurrentOrder(newIdx + 1);
+  }
+
+  async function handleMoveDown() {
+    const sorted = [...allGarageVehicles].sort((a, b) => a.display_order - b.display_order);
+    const idx    = sorted.findIndex(v => v.id === garageVehicle.id);
+    if (idx < 0 || idx >= sorted.length - 1) return;
+
+    const newSorted = [...sorted];
+    const temp      = newSorted[idx];
+    newSorted[idx]  = newSorted[idx + 1];
+    newSorted[idx + 1] = temp;
+
+    await Promise.all(
+      newSorted.map((v, i) =>
+        supabase.from('garage_vehicles').update({ display_order: i + 1 }).eq('id', v.id)
+      )
+    );
+
+    const updated = newSorted.map((v, i) => ({ ...v, display_order: i + 1 }));
+    setAllGarageVehicles(updated);
+    const newIdx = updated.findIndex(v => v.id === garageVehicle.id);
+    setCurrentOrder(newIdx + 1);
+  }
+
+  const sorted      = [...allGarageVehicles].sort((a, b) => a.display_order - b.display_order);
+  const currentIdx  = sorted.findIndex(v => v.id === garageVehicle.id);
+  const canMoveUp   = currentIdx > 0;
+  const canMoveDown = currentIdx >= 0 && currentIdx < sorted.length - 1;
 
   // ── Save nickname + notes ─────────────────────────────────────────────────
   async function handleSave() {
@@ -55,7 +125,7 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
     }
   }
 
-  // ── Set default tyre set ──────────────────────────────────────────────────
+  // ── Set default tire set ──────────────────────────────────────────────────
   async function handleSetDefault(tireSet: GarageTireSet) {
     await supabase
       .from('garage_tire_sets')
@@ -66,10 +136,10 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
     );
   }
 
-  // ── Delete tyre set ───────────────────────────────────────────────────────
+  // ── Delete tire set ───────────────────────────────────────────────────────
   function handleDeleteTyreSet(tireSet: GarageTireSet) {
     Alert.alert(
-      'Delete tyre set',
+      'Delete tire set',
       `Remove "${tireSet.name}" from this car?`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -122,17 +192,42 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-        {/* Vehicle identity — read only */}
+        {/* Vehicle identity + order controls */}
         <View style={styles.vehicleHeader}>
-          <Text style={styles.vehicleName}>
-            {vehicle?.year_end
-              ? `${vehicle?.year_start}–${vehicle?.year_end}`
-              : vehicle?.year_start} {vehicle?.make} {vehicle?.model}
-          </Text>
-          <Text style={styles.vehicleTrim}>{vehicle?.trim}</Text>
-          <Text style={styles.vehicleOem}>
-            OEM {vehicle?.oem_pressure_front} / {vehicle?.oem_pressure_rear} PSI
-          </Text>
+          <View style={styles.vehicleHeaderTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.vehicleName}>
+                {vehicle?.year_end
+                  ? `${vehicle?.year_start}–${vehicle?.year_end}`
+                  : vehicle?.year_start} {vehicle?.make} {vehicle?.model}
+              </Text>
+              <Text style={styles.vehicleTrim}>{vehicle?.trim}</Text>
+              <Text style={styles.vehicleOem}>
+                OEM {vehicle ? displayPressure(vehicle.oem_pressure_front) : '—'} / {vehicle ? displayPressure(vehicle.oem_pressure_rear) : '—'} {pressureUnit()}
+              </Text>
+            </View>
+            {allGarageVehicles.length > 1 && (
+              <View style={styles.orderControls}>
+                <Text style={styles.orderLabel}>
+                  {currentIdx + 1} of {sorted.length}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.orderBtn, !canMoveUp && styles.orderBtnDisabled]}
+                  onPress={handleMoveUp}
+                  disabled={!canMoveUp}
+                >
+                  <Text style={[styles.orderBtnText, !canMoveUp && { opacity: 0.3 }]}>↑</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.orderBtn, !canMoveDown && styles.orderBtnDisabled]}
+                  onPress={handleMoveDown}
+                  disabled={!canMoveDown}
+                >
+                  <Text style={[styles.orderBtnText, !canMoveDown && { opacity: 0.3 }]}>↓</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Nickname */}
@@ -174,7 +269,7 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
           multiline
         />
 
-        {/* Tyre sets */}
+        {/* Tire sets */}
         <View style={styles.tyreSetsHeader}>
           <Text style={styles.fieldLabel}>Tyre sets</Text>
           <TouchableOpacity onPress={() => setAddTyreVisible(true)}>
@@ -188,7 +283,7 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
             onPress={() => setAddTyreVisible(true)}
           >
             <Text style={styles.emptyText}>
-              No tyre sets yet — add one to start logging sessions
+              No tire sets yet — add one to start logging sessions
             </Text>
           </TouchableOpacity>
         ) : (
@@ -250,7 +345,7 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
   );
 }
 
-// ── Add Tyre Set Modal ────────────────────────────────────────────────────────
+// ── Add Tire Set Modal ────────────────────────────────────────────────────────
 function TireSearch({
     label, query, onQuery, selected, onSelect, tires,
   }: {
@@ -319,7 +414,7 @@ function AddTyreSetModal({
   const [search, setSearch]               = useState('');
   const [selectedTire, setSelectedTire]   = useState<Tire | null>(null);
   const [saving, setSaving]               = useState(false);
-  const [tires, setTires] = useState<Tire[]>([]);
+  const [tires, setTires]                 = useState<Tire[]>([]);
 
   useEffect(() => {
     supabase
@@ -338,28 +433,23 @@ function AddTyreSetModal({
   }
 
   const hasSelection = selectedTire !== null;
-
-  const isDuplicate = selectedTire !== null &&
+  const isDuplicate  = selectedTire !== null &&
     existingTireSets.some(ts =>
       ts.tire_front_id === selectedTire.id && ts.tire_rear_id === selectedTire.id
     );
-
   const canSave = hasSelection && !isDuplicate;
 
   async function handleSave() {
     if (!canSave) return;
     setSaving(true);
-    const frontId = selectedTire!.id;
-    const rearId  = selectedTire!.id;
-
     const { data, error } = await supabase
       .from('garage_tire_sets')
       .insert({
         garage_vehicle_id: garageVehicleId,
-        name: setName.trim() || selectedTire!.compound,
-        tire_front_id:     frontId,
-        tire_rear_id:      rearId,
-        is_default:        false,
+        name:          setName.trim() || selectedTire!.compound,
+        tire_front_id: selectedTire!.id,
+        tire_rear_id:  selectedTire!.id,
+        is_default:    false,
       })
       .select('id, garage_vehicle_id, name, tire_front_id, tire_rear_id, is_default, notes, created_at')
       .single();
@@ -373,7 +463,7 @@ function AddTyreSetModal({
       } as GarageTireSet);
       reset();
     } else {
-      Alert.alert('Error', 'Could not save tyre set.');
+      Alert.alert('Error', 'Could not save tire set.');
     }
   }
 
@@ -381,14 +471,12 @@ function AddTyreSetModal({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={[globalStyles.screen, { padding: spacing.lg }]}>
         <View style={styles.modalHeader}>
-          <Text style={typography.heading}>Add tyre set</Text>
+          <Text style={typography.heading}>Add tire set</Text>
           <TouchableOpacity onPress={() => { reset(); onClose(); }}>
             <Text style={[typography.caption, { color: colors.accent }]}>Cancel</Text>
           </TouchableOpacity>
         </View>
-
         <ScrollView showsVerticalScrollIndicator={false}>
-
           <Text style={styles.fieldLabel}>Set name</Text>
           <TextInput
             style={styles.input}
@@ -398,9 +486,8 @@ function AddTyreSetModal({
             placeholderTextColor={colors.textMuted}
             autoCapitalize="words"
           />
-
           <TireSearch
-            label="Tyre compound"
+            label="Tire compound"
             query={search}
             onQuery={setSearch}
             selected={selectedTire}
@@ -412,17 +499,15 @@ function AddTyreSetModal({
               This compound is already added to this car
             </Text>
           )}
-
           <TouchableOpacity
             style={[styles.saveBtn, (!canSave || saving) && styles.saveBtnDisabled]}
             onPress={handleSave}
             disabled={!canSave || saving}
           >
             <Text style={[styles.saveBtnText, (!canSave || saving) && styles.saveBtnTextDisabled]}>
-              {saving ? 'Saving…' : 'Add tyre set'}
+              {saving ? 'Saving…' : 'Add tire set'}
             </Text>
           </TouchableOpacity>
-
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -443,9 +528,28 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
     borderBottomWidth: 0.5, borderBottomColor: colors.border,
   },
+  vehicleHeaderTop: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md,
+  },
   vehicleName: { fontSize: 20, fontWeight: '500', color: colors.textPrimary },
   vehicleTrim: { ...typography.caption, marginTop: 2 },
-  vehicleOem: { ...typography.caption, color: colors.textMuted, marginTop: 4 },
+  vehicleOem:  { ...typography.caption, color: colors.textMuted, marginTop: 4 },
+
+  orderControls: {
+    alignItems: 'center', gap: 4,
+  },
+  orderLabel: {
+    fontSize: 10, color: colors.textMuted, marginBottom: 2,
+  },
+  orderBtn: {
+    width: 32, height: 32, borderRadius: radius.sm,
+    borderWidth: 0.5, borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  orderBtnDisabled: { opacity: 0.3 },
+  orderBtnText: { fontSize: 16, color: colors.textPrimary },
+
   fieldLabel: {
     fontSize: 11, fontWeight: '500', color: colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.5,
@@ -497,8 +601,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14, alignItems: 'center',
   },
   deleteCarText: { fontSize: 15, fontWeight: '500', color: colors.danger },
-
-  // Modal
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: spacing.lg,

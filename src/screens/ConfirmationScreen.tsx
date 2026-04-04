@@ -16,7 +16,7 @@ type Props = { navigation: NativeStackNavigationProp<any> };
 
 export default function ConfirmationScreen({ navigation }: Props) {
   const { activeEvent, lastEntry, sessionCount, setActiveTab } = useEvent();
-  const { displayPressure, pressureUnit } = useSettings();
+  const { displayPressure, pressureUnit, displayTemp, tempUnit, settings } = useSettings();
   //console.log('pressure unit:', pressureUnit());
   const [target, setTarget]       = useState<any>(null);
   const [commSessions, setCommSessions] = useState<any[]>([]);
@@ -83,6 +83,46 @@ export default function ConfirmationScreen({ navigation }: Props) {
     return isHotInRange(psi, target);
   }
 
+  // ── Tyre temperature data ─────────────────────────────────────────────────
+  const hasTier1Temps = settings.pyrometer_enabled && !settings.pyrometer_gradient && (
+    lastEntry?.tyre_temp_hot_fl_c != null || lastEntry?.tyre_temp_hot_fr_c != null
+  );
+  const hasTier2Temps = settings.pyrometer_enabled && settings.pyrometer_gradient && (
+    lastEntry?.tyre_temp_hot_fl_mid_c != null || lastEntry?.tyre_temp_hot_fr_mid_c != null
+  );
+  const hotTempFL = hasTier1Temps ? lastEntry?.tyre_temp_hot_fl_c : hasTier2Temps ? lastEntry?.tyre_temp_hot_fl_mid_c : undefined;
+  const hotTempFR = hasTier1Temps ? lastEntry?.tyre_temp_hot_fr_c : hasTier2Temps ? lastEntry?.tyre_temp_hot_fr_mid_c : undefined;
+  const hotTempRL = hasTier1Temps ? lastEntry?.tyre_temp_hot_rl_c : hasTier2Temps ? lastEntry?.tyre_temp_hot_rl_mid_c : undefined;
+  const hotTempRR = hasTier1Temps ? lastEntry?.tyre_temp_hot_rr_c : hasTier2Temps ? lastEntry?.tyre_temp_hot_rr_mid_c : undefined;
+  const tempFLInner = lastEntry?.tyre_temp_hot_fl_inner_c;
+  const tempFLOuter = lastEntry?.tyre_temp_hot_fl_outer_c;
+  const tempFRInner = lastEntry?.tyre_temp_hot_fr_inner_c;
+  const tempFROuter = lastEntry?.tyre_temp_hot_fr_outer_c;
+  const tempRLInner = lastEntry?.tyre_temp_hot_rl_inner_c;
+  const tempRLOuter = lastEntry?.tyre_temp_hot_rl_outer_c;
+  const tempRRInner = lastEntry?.tyre_temp_hot_rr_inner_c;
+  const tempRROuter = lastEntry?.tyre_temp_hot_rr_outer_c;
+  const allMidTemps = [hotTempFL, hotTempFR, hotTempRL, hotTempRR].filter((t): t is number => t != null);
+  const globalTempAvg = allMidTemps.length > 0 ? allMidTemps.reduce((a,b) => a+b, 0) / allMidTemps.length : null;
+
+  function tempToColor(tempC: number | null | undefined, avg: number | null, scale = 6): string {
+    if (tempC == null || avg == null) return '#252525';
+    const temp    = settings.temperature_unit === 'f' ? tempC * 9/5 + 32 : tempC;
+    const avgDisp = settings.temperature_unit === 'f' ? avg  * 9/5 + 32 : avg;
+    const sf      = settings.temperature_unit === 'f' ? scale * 1.8 : scale;
+    const ratio   = Math.max(0, Math.min(1, 0.5 + (temp - avgDisp) / (sf * 2)));
+    if (ratio < 0.45) { const t = ratio/0.45; return `rgb(${Math.round(40+t*50)},${Math.round(95+t*80)},220)`; }
+    if (ratio < 0.55) return `rgb(210,210,200)`;
+    const t = (ratio-0.55)/0.45;
+    return `rgb(${Math.round(220+t*35)},${Math.round(220-t*220)},${Math.round(210-t*210)})`;
+  }
+
+  function fmtTemp(c: number | null | undefined): string {
+    if (c == null) return '—';
+      const converted = settings.temperature_unit === 'f' ? c * 9/5 + 32 : c;
+      return `${Math.round(converted)}${tempUnit()}`;
+    }
+
   // Axle spread (FL vs FR, RL vs RR)
   const frontSpread = (hotFL !== undefined && hotFR !== undefined)
     ? Math.abs(Math.round((hotFL - hotFR) * 10) / 10)
@@ -113,10 +153,10 @@ export default function ConfirmationScreen({ navigation }: Props) {
       return `Front average ran ${displayPressure(avg - target.target_hot_max_psi)} ${pressureUnit()} above the ${activeEvent?.tire_front.compound} target. Consider dropping cold set by 1–2 ${pressureUnit()} next session.`;
     }
     if (avg && avg < target.target_hot_min_psi - 1) {
-      return `Front average was ${displayPressure(target.target_hot_min_psi - avg)} ${pressureUnit()} below the ${activeEvent?.tire_front.compound} target. The tyre may not be fully up to temperature, or try adding 1–1.5 ${pressureUnit()} cold.`;
+      return `Front average was ${displayPressure(target.target_hot_min_psi - avg)} ${pressureUnit()} below the ${activeEvent?.tire_front.compound} target. The tire may not be fully up to temperature, or try adding 1–1.5 ${pressureUnit()} cold.`;
     }
     if (frontSpread !== null && frontSpread > 1.5) {
-      return `Front left/right spread is ${displayPressure(frontSpread)} ${pressureUnit()} — larger than typical. Check camber settings or tyre condition if this persists.`;
+      return `Front left/right spread is ${displayPressure(frontSpread)} ${pressureUnit()} — larger than typical. Check camber settings or tire condition if this persists.`;
     }
     if (rearSpread !== null && rearSpread > 1.5) {
       return `Rear left/right spread is ${displayPressure(rearSpread)} ${pressureUnit()} — worth monitoring across sessions.`;
@@ -198,32 +238,54 @@ export default function ConfirmationScreen({ navigation }: Props) {
             </Text>
             <View style={styles.cornerGrid}>
               {([
-                { key: 'fl', label: 'Front left',  val: hotFL },
-                { key: 'fr', label: 'Front right', val: hotFR },
-                { key: 'rl', label: 'Rear left',   val: hotRL },
-                { key: 'rr', label: 'Rear right',  val: hotRR },
-              ] as { key: string; label: string; val: number | undefined }[]).map(({ key, label, val }) => {
-                const inRange = cornerInRange(val);
+                { key: 'fl', label: 'Front left',  val: hotFL, midTemp: hotTempFL, innerTemp: tempFLInner, outerTemp: tempFLOuter, isLeft: true  },
+                { key: 'fr', label: 'Front right', val: hotFR, midTemp: hotTempFR, innerTemp: tempFRInner, outerTemp: tempFROuter, isLeft: false },
+                { key: 'rl', label: 'Rear left',   val: hotRL, midTemp: hotTempRL, innerTemp: tempRLInner, outerTemp: tempRLOuter, isLeft: true  },
+                { key: 'rr', label: 'Rear right',  val: hotRR, midTemp: hotTempRR, innerTemp: tempRRInner, outerTemp: tempRROuter, isLeft: false },
+              ] as { key: string; label: string; val: number | undefined; midTemp: number | null | undefined; innerTemp: number | null | undefined; outerTemp: number | null | undefined; isLeft: boolean }[]).map(({ key, label, val, midTemp, innerTemp, outerTemp, isLeft }) => {
+                const inRange  = cornerInRange(val);
+                const midColor = tempToColor(midTemp, globalTempAvg);
+                const leftTemp  = isLeft ? outerTemp : innerTemp;
+                const rightTemp = isLeft ? innerTemp : outerTemp;
+                const leftColor  = tempToColor(leftTemp,  globalTempAvg);
+                const rightColor = tempToColor(rightTemp, globalTempAvg);
                 return (
-                  <View
-                    key={key}
-                    style={[
-                      styles.cornerBox,
-                      inRange === true  && styles.cornerBoxGood,
-                      inRange === false && styles.cornerBoxBad,
-                    ]}
-                  >
+                  <View key={key} style={styles.cornerBox}>
                     <Text style={styles.cornerLabel}>{label}</Text>
-                    <Text style={styles.cornerVal}>
-                      {val !== undefined ? displayPressure(val) : '—'}
-                    </Text>
-                    {inRange !== null && (
-                      <View style={[styles.cornerBadge, inRange ? styles.cornerBadgeGood : styles.cornerBadgeBad]}>
-                        <Text style={[styles.cornerBadgeText, inRange ? styles.cornerBadgeTextGood : styles.cornerBadgeTextBad]}>
-                          {inRange ? 'in range' : 'out of range'}
-                        </Text>
+                    <View style={styles.cornerPsiRow}>
+                      <Text style={styles.cornerVal}>
+                        {val !== undefined ? displayPressure(val) : '—'}
+                      </Text>
+                      {inRange !== null && (
+                        <View style={[styles.cornerBadge, inRange ? styles.cornerBadgeGood : styles.cornerBadgeBad]}>
+                          <Text style={[styles.cornerBadgeText, inRange ? styles.cornerBadgeTextGood : styles.cornerBadgeTextBad]}>
+                            {inRange ? 'in range' : 'out of range'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    {hasTier1Temps && midTemp != null && (
+                      <Text style={styles.cornerTempText}>{fmtTemp(midTemp)}</Text>
+                    )}
+                    {hasTier2Temps && midTemp != null && (
+                      <View style={styles.cornerTempRow}>
+                        <Text style={styles.cornerTempText}>{fmtTemp(leftTemp)}</Text>
+                        <Text style={styles.cornerTempText}>{fmtTemp(midTemp)}</Text>
+                        <Text style={styles.cornerTempText}>{fmtTemp(rightTemp)}</Text>
                       </View>
                     )}
+                    <View style={styles.cornerBar}>
+                      {hasTier2Temps && midTemp != null ? (
+                        <View style={[styles.cornerBarSegment, { flex: 1, backgroundColor: leftColor }]} />
+                      ) : null}
+                      <View style={[
+                        hasTier2Temps && midTemp != null ? styles.cornerBarSegment : styles.cornerBarFull,
+                        { flex: 1, backgroundColor: midColor },
+                      ]} />
+                      {hasTier2Temps && midTemp != null ? (
+                        <View style={[styles.cornerBarSegment, { flex: 1, backgroundColor: rightColor }]} />
+                      ) : null}
+                    </View>
                   </View>
                 );
               })}
@@ -412,21 +474,33 @@ const styles = StyleSheet.create({
   cornerBox: {
     width: '47%', backgroundColor: colors.bgCard,
     borderRadius: radius.md, borderWidth: 0.5, borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.md, alignItems: 'center',
   },
-  cornerBoxGood: { borderColor: colors.success, backgroundColor: colors.successSubtle },
-  cornerBoxBad:  { borderColor: colors.danger,  backgroundColor: colors.dangerSubtle },
-  cornerLabel: { fontSize: 10, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 },
+  cornerPsiRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 6, marginBottom: 3,
+  },
+  cornerLabel: {
+    fontSize: 10, color: colors.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.4,
+    marginBottom: 3, textAlign: 'center',
+  },
   cornerVal: { fontSize: 22, fontWeight: '500', color: colors.textPrimary, fontVariant: ['tabular-nums'] as any },
-  cornerBadge: {
-    marginTop: 5, alignSelf: 'flex-start',
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10,
-  },
+  cornerBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
   cornerBadgeGood: { backgroundColor: colors.successSubtle },
   cornerBadgeBad:  { backgroundColor: colors.dangerSubtle },
   cornerBadgeText: { fontSize: 10, fontWeight: '600' },
   cornerBadgeTextGood: { color: colors.success },
   cornerBadgeTextBad:  { color: colors.danger },
+  cornerTempText: { fontSize: 11, color: colors.textPrimary, fontVariant: ['tabular-nums'] as any },
+  cornerTempRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginVertical: 2 },
+  cornerBar: {
+    width: '100%', height: 5, borderRadius: 3,
+    flexDirection: 'row', marginTop: 6,
+    overflow: 'hidden', backgroundColor: '#252525',
+  },
+  cornerBarFull: { borderRadius: 3 },
+  cornerBarSegment: {},
 
   // Axle diagnostics
   diagRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },

@@ -33,6 +33,13 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
   const [axle, setAxle]         = useState<'front' | 'rear'>('front');
   const [target, setTarget]     = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setCurrentUserId(data?.user?.id ?? null);
+    });
+  }, []);
 
   useEffect(() => {
     if (!tireId) return;
@@ -52,12 +59,12 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
       .eq('vehicle_id', vehicleId)
       .eq('tire_id', tireId)
       .eq('track_id', trackId)
-      .eq('is_hidden', false)
+      .or(`is_hidden.eq.false${currentUserId ? `,and(is_hidden.eq.true,user_id.eq.${currentUserId})` : ''}`)
       .eq('is_outlier', false)
       .not('hot_front_psi', 'is', null)
       .order('created_at', { ascending: true })
       .then(({ data }) => { if (data) setSessions(data); });
-  }, [vehicleId, tireId, trackId]);
+  }, [vehicleId, tireId, trackId, currentUserId]);
 
   const sessionsWithHot = sessions;
 
@@ -220,7 +227,7 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
             <View style={styles.interpretBox}>
               {stddev < 0.4 && (
                 <Text style={styles.interpretText}>
-                  Your heat soak delta is very consistent (σ = {stddev} {pressureUnit()}), which indicates you're warming the tyres predictably each session. This makes your cold set data highly reliable for recommendations.
+                  Your heat soak delta is very consistent (σ = {stddev} {pressureUnit()}), which indicates you're warming the tires predictably each session. This makes your cold set data highly reliable for recommendations.
                 </Text>
               )}
               {stddev >= 0.4 && stddev < 0.8 && (
@@ -230,7 +237,7 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
               )}
               {stddev >= 0.8 && (
                 <Text style={styles.interpretText}>
-                  Higher variation in heat soak (σ = {stddev} {pressureUnit()}) suggests the tyres are reaching different temperatures between sessions. Check for consistent warm-up laps, and consider whether session type or traffic is influencing tyre temp.
+                  Higher variation in heat soak (σ = {stddev} {pressureUnit()}) suggests the tires are reaching different temperatures between sessions. Check for consistent warm-up laps, and consider whether session type or traffic is influencing tire temp.
                 </Text>
               )}
               {target && inRangeCount === deltas.length && (
@@ -279,7 +286,7 @@ const styles = StyleSheet.create({
   summaryCard: {
     flex: 1, backgroundColor: colors.bgCard,
     borderRadius: radius.md, borderWidth: 0.5, borderColor: colors.border,
-    padding: spacing.md, alignItems: 'center',
+    padding: spacing.sm, alignItems: 'center',
   },
   summaryVal: {
     fontFamily: 'monospace', fontSize: 22,

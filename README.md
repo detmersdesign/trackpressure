@@ -1,6 +1,6 @@
 # TrackPressure
 
-A React Native (Expo) app for logging, analysing, and optimising tyre pressures at track events.
+A React Native (Expo) app for logging, analysing, and optimising tire pressures at track events.
 
 ---
 
@@ -119,7 +119,7 @@ Edit `TIRE_TARGETS` in `src/data/staticData.js`:
 't_new': {
   min: 33.0,        // minimum hot PSI for target operating range
   max: 37.0,        // maximum hot PSI
-  temp_min_c: 80,   // tyre operating temperature range (optional)
+  temp_min_c: 80,   // tire operating temperature range (optional)
   temp_max_c: 100,
   source: 'official' // or 'community'
 },

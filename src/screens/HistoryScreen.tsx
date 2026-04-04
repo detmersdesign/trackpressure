@@ -63,7 +63,7 @@ type Props = {
 export default function HistoryScreen({ navigation, route }: Props) {
   const { activeEvent, setActiveTab } = useEvent();
   const { weather } = useLocationAndWeather();
-  const { displayPressure, pressureUnit, displayTemp, tempUnit } = useSettings();
+  const { displayPressure, pressureUnit, displayTemp, tempUnit, settings } = useSettings();
 
   const [filter, setFilter]             = useState<FilterKey>('all');
   const [trackView, setTrackView]       = useState<'all' | 'single'>('single');
@@ -102,7 +102,10 @@ export default function HistoryScreen({ navigation, route }: Props) {
     ? (availableTracks.find(t => t.id === selectedTrackId)?.name ?? 'Track')
     : 'All tracks';
 
-  const ambientToday = weather?.temp_c ?? 20;
+  const ambientTodayC = weather?.temp_c ?? 20;
+  const ambientToday  = settings.temperature_unit === 'f'
+    ? ambientTodayC * 9/5 + 32
+    : ambientTodayC;
 
   // ── Guard: no context ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -130,7 +133,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
     });
   }, []);
 
-  // ── Fetch available tracks for this car/tyre combo ─────────────────────────
+  // ── Fetch available tracks for this car/tire combo ─────────────────────────
   useEffect(() => {
     if (!vehicleId || !tireId) return;
 
@@ -139,7 +142,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
       .select('track_id, tracks (name)')
       .eq('vehicle_id', vehicleId)
       .eq('tire_id', tireId)
-      .eq('is_hidden', false)
+      .or(`is_hidden.eq.false${currentUserId ? `,and(is_hidden.eq.true,user_id.eq.${currentUserId})` : ''}`)
       .then(({ data }) => {
         if (!data) return;
         const seen = new Map<string, string>();
@@ -156,7 +159,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
           setSelectedTrackId(preferred ? preferred.id : tracks[0]?.id);
         }
       });
-  }, [vehicleId, tireId]);
+  }, [vehicleId, tireId, currentUserId]);
 
   // ── Fetch sessions ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -180,7 +183,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
         `)
         .eq('vehicle_id', vehicleId)
         .eq('tire_id', tireId)
-        .eq('is_hidden', false)
+        .or(`is_hidden.eq.false${currentUserId ? `,and(is_hidden.eq.true,user_id.eq.${currentUserId})` : ''}`)
         .eq('is_outlier', false)
         .order('created_at', { ascending: false });
 
@@ -201,7 +204,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
     }
 
     fetchSessions();
-  }, [vehicleId, tireId, selectedTrackId, trackView]);
+  }, [vehicleId, tireId, selectedTrackId, trackView, currentUserId]);
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
@@ -233,7 +236,10 @@ export default function HistoryScreen({ navigation, route }: Props) {
   const chartSessions = sessions.filter(s => s.ambient_temp_c != null);
   const hasChartData  = chartSessions.length >= 2 && trackView === 'single';
 
-  const temps  = chartSessions.map(s => s.ambient_temp_c!);
+  const temps  = chartSessions.map(s => {
+    const c = s.ambient_temp_c!;
+    return settings.temperature_unit === 'f' ? c * 9/5 + 32 : c;
+  });
   const fronts = chartSessions.map(s => s.cold_front_psi);
 
   const minT = hasChartData ? Math.min(...temps)  - 2 : 10;
@@ -265,7 +271,18 @@ export default function HistoryScreen({ navigation, route }: Props) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-    if (!vehicleId || !tireId) return null;
+    if (!vehicleId || !tireId) {
+      return (
+        <SafeAreaView style={globalStyles.screen}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+            <Text style={typography.subhead}>No tire set selected</Text>
+            <Text style={[typography.caption, { textAlign: 'center', marginTop: spacing.sm }]}>
+              Go to your garage and select a tire set to view session history.
+            </Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
 
     return (
       <SafeAreaView style={globalStyles.screen}>
@@ -344,14 +361,14 @@ export default function HistoryScreen({ navigation, route }: Props) {
         {recommendation && (
           <>
             <Text style={globalStyles.sectionLabel}>
-              Recommended for today · {displayTemp(ambientToday)}{tempUnit()}
+              Recommended for today · {displayTemp(ambientTodayC)}{tempUnit()}
             </Text>
             <View style={[globalStyles.card, styles.recCard]}>
               <View>
-                <Text style={styles.recTitle}>Suggested cold set</Text>
+                <Text style={styles.recTitle}>Suggested cold {pressureUnit()}</Text>
                 <Text style={styles.recBasis}>
                   {recommendation.personal_weight}% your history
-                  {' · '}{recommendation.community_weight}% community
+                  {'\n'}{recommendation.community_weight}% community
                 </Text>
               </View>
               <View style={styles.recPressures}>
@@ -366,7 +383,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
                 </View>
                 <Text style={[typography.caption, {
                   alignSelf: 'flex-end', marginBottom: 4, marginLeft: 4,
-                }]}>{pressureUnit()}</Text>
+                }]}></Text>
               </View>
             </View>
           </>
@@ -398,7 +415,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
                     <SvgText key={`xl${i}`}
                       x={toX(t)} y={CHART_H - 4}
                       fontSize={9} fill={colors.textMuted} textAnchor="middle">
-                      {Math.round(t)}°
+                      {Math.round(t)}{tempUnit()}
                     </SvgText>
                   ))}
                 <Line
@@ -406,15 +423,20 @@ export default function HistoryScreen({ navigation, route }: Props) {
                   stroke={colors.accent} strokeWidth={1.5}
                   strokeDasharray="4,3" opacity={0.7}
                 />
-                {chartSessions.map(s => (
-                  <Circle key={s.id}
-                    cx={toX(s.ambient_temp_c!)}
-                    cy={toY(s.cold_front_psi)}
-                    r={4}
-                    fill={s.user_id === currentUserId ? colors.accent : colors.textMuted}
-                    opacity={0.85}
-                  />
-                ))}
+                {chartSessions.map(s => {
+                  const tDisplay = settings.temperature_unit === 'f'
+                    ? s.ambient_temp_c! * 9/5 + 32
+                    : s.ambient_temp_c!;
+                  return (
+                    <Circle key={s.id}
+                      cx={toX(tDisplay)}
+                      cy={toY(s.cold_front_psi)}
+                      r={4}
+                      fill={s.user_id === currentUserId ? colors.accent : colors.textMuted}
+                      opacity={0.85}
+                    />
+                  );
+                })}
                 <Circle cx={todayX} cy={todayY} r={6} fill={colors.purple} opacity={0.9} />
                 <SvgText x={todayX + 8} y={todayY + 4} fontSize={9} fill={colors.purple}>
                   today
@@ -431,7 +453,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
                 </View>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: colors.purple }]} />
-                  <Text style={typography.caption}>Today ({displayTemp(ambientToday)}{tempUnit()})</Text>
+                  <Text style={typography.caption}>Today ({displayTemp(ambientTodayC)}{tempUnit()})</Text>
                 </View>
               </View>
             </View>
@@ -483,14 +505,14 @@ export default function HistoryScreen({ navigation, route }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={[typography.body, { fontWeight: '500' }]}>
                     {new Date(session.created_at).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric',
+                      month: 'short', day: 'numeric', year: 'numeric',
                     })}
                     {' · '}{SESSION_TYPE_LABELS[session.session_type] ?? session.session_type}
                     {session.ambient_temp_c != null ? ` · ${displayTemp(session.ambient_temp_c)}${tempUnit()}` : ''}
                   </Text>
                   <Text style={typography.caption}>
                     {trackView === 'all' && session.track_name
-                      ? `${session.track_name} · `
+                      ? `${session.track_name}\n`
                       : ''}
                     Cold {displayPressure(session.cold_front_psi)} / {displayPressure(session.cold_rear_psi)}
                     {session.hot_front_psi != null
@@ -592,10 +614,10 @@ const styles = StyleSheet.create({
   recTitle: { ...typography.body, fontWeight: '500' },
   recBasis: { ...typography.caption, marginTop: 2, maxWidth: 180 },
   recPressures: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  recP: { alignItems: 'center' },
+  recP: { alignItems: 'center'},
   recLabel: { ...typography.caption, marginBottom: 2 },
-  recVal: { fontFamily: 'monospace', fontSize: 26, color: colors.textPrimary },
-  recSep: { fontFamily: 'monospace', fontSize: 22, color: colors.textMuted, marginHorizontal: 2 },
+  recVal: { fontFamily: 'monospace', fontSize: 20, color: colors.textPrimary },
+  recSep: { fontFamily: 'monospace', fontSize: 20, color: colors.textMuted, marginHorizontal: 2 },
 
   // Chart
   chartLegend: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm, flexWrap: 'wrap' },

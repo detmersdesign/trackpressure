@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet,
@@ -32,10 +32,10 @@ function pressureLooksWrong(val: string): boolean {
   return n < 15 || n > 60;
 }
 
-function tempLooksWrong(val: string): boolean {
+function tempLooksWrong(val: string, unit: 'f' | 'c'): boolean {
   const n = parseFloat(val);
   if (isNaN(n)) return false;
-  return n < 50 || n > 350;
+  return unit === 'f' ? n < 50 || n > 350 : n < 10 || n > 175;
 }
 
 type Props = {
@@ -44,7 +44,7 @@ type Props = {
 };
 
 export default function CornerReviewScreen({ navigation, route }: Props) {
-  const { mode, pressures: initialPressures, temps: initialTemps } = route.params;
+  const { mode, pressures: initialPressures, temps: initialTemps, coldStartedAt, hotStartedAt, ambientTempC, historic_date } = route.params;
 
   // All hooks at top level
   const {
@@ -52,7 +52,7 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
     clearOpenSession, setLastEntry, incrementSession,
   } = useEvent();
   const { weather } = useLocationAndWeather();
-  const { pressureUnit, tempUnit, inputToPsi, settings } = useSettings();
+  const { pressureUnit, tempUnit, inputToPsi, inputToC, settings } = useSettings();
 
   const [pressures, setPressures] = useState<Record<Corner, string>>(initialPressures);
   const [temps,     setTemps]     = useState<Record<Corner, string>>(initialTemps);
@@ -60,11 +60,19 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
   const [editingCorner, setEditingCorner] = useState<Corner | null>(null);
   const [editingField,  setEditingField]  = useState<'pressure' | 'temp'>('pressure');
   const [submitting,    setSubmitting]    = useState(false);
+  const hotStartRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    setPressures(route.params.pressures);
+    setTemps(route.params.temps);
+    setEditingCorner(null);
+    setEditingField('pressure');
+  }, [route.params]);
 
   // ── Flagging ──────────────────────────────────────────────────────────────
   function cornerHasWarning(c: Corner): boolean {
     if (pressures[c] && pressureLooksWrong(pressures[c])) return true;
-    if (temps[c]     && tempLooksWrong(temps[c]))         return true;
+    if (temps[c]     && tempLooksWrong(temps[c], settings.temperature_unit) )         return true;
     return false;
   }
 
@@ -110,14 +118,14 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
     const coldF  = roundHalf((coldFL + coldFR) / 2);
     const coldR  = roundHalf((coldRR + coldRL) / 2);
 
-    const ambientC = weather?.temp_c;
+    const ambientC = ambientTempC ?? weather?.temp_c;
 
     // Per-corner prediction: use corner temp if entered, else ambient
     function predictForCorner(coldPsi: number, c: Corner): number {
-      const rawTemp = temps[c] ? parseFloat(temps[c]) : NaN;
+      const rawTemp = temps[c] ? inputToC(parseFloat(temps[c])) : NaN;
       const tC = !isNaN(rawTemp) ? rawTemp : ambientC;
       if (tC !== undefined) {
-        const tF = settings.temperature_unit === 'c' ? tC * 9/5 + 32 : tC;
+        const tF = tC !== undefined ? tC * 9/5 + 32 : undefined;
         return predictHotRounded(coldPsi, tF);
       }
       return predictHotRounded(coldPsi);
@@ -132,17 +140,23 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
       cold_fr_psi:      coldFR,
       cold_rl_psi:      coldRL,
       cold_rr_psi:      coldRR,
-      cold_fl_temp_c:   temps.fl ? parseFloat(temps.fl) : undefined,
-      cold_fr_temp_c:   temps.fr ? parseFloat(temps.fr) : undefined,
-      cold_rl_temp_c:   temps.rl ? parseFloat(temps.rl) : undefined,
-      cold_rr_temp_c:   temps.rr ? parseFloat(temps.rr) : undefined,
+      cold_fl_temp_c:   temps.fl ? inputToC(parseFloat(temps.fl)) : undefined,
+      cold_fr_temp_c:   temps.fr ? inputToC(parseFloat(temps.fr)) : undefined,
+      cold_rl_temp_c:   temps.rl ? inputToC(parseFloat(temps.rl)) : undefined,
+      cold_rr_temp_c:   temps.rr ? inputToC(parseFloat(temps.rr)) : undefined,
       predicted_hot_fl: predictForCorner(coldFL, 'fl'),
       predicted_hot_fr: predictForCorner(coldFR, 'fr'),
       predicted_hot_rl: predictForCorner(coldRL, 'rl'),
       predicted_hot_rr: predictForCorner(coldRR, 'rr'),
       saved_at:         new Date().toISOString(),
       ambient_temp_c:   ambientC,
-      ambient_source:   ambientC !== undefined ? 'auto' : undefined,
+      ambient_source:   ambientC !== undefined
+        ? (route.params?.ambientTempC != null ? 'manual' : 'auto')
+        : undefined,
+      cold_entry_duration_seconds: coldStartedAt
+        ? Math.round((Date.now() - coldStartedAt) / 1000)
+        : undefined,
+      historic_date,
     };
 
     await setOpenSession(session);
@@ -178,10 +192,10 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
       hot_rr_psi:           hotRR,
       hot_front_psi:        hotFrontAvg,
       hot_rear_psi:         hotRearAvg,
-      tyre_temp_hot_fl_c:   temps.fl ? parseFloat(temps.fl) : null,
-      tyre_temp_hot_fr_c:   temps.fr ? parseFloat(temps.fr) : null,
-      tyre_temp_hot_rl_c:   temps.rl ? parseFloat(temps.rl) : null,
-      tyre_temp_hot_rr_c:   temps.rr ? parseFloat(temps.rr) : null,
+      tyre_temp_hot_fl_c:   temps.fl ? inputToC(parseFloat(temps.fl)) : null,
+      tyre_temp_hot_fr_c:   temps.fr ? inputToC(parseFloat(temps.fr)) : null,
+      tyre_temp_hot_rl_c:   temps.rl ? inputToC(parseFloat(temps.rl)) : null,
+      tyre_temp_hot_rr_c:   temps.rr ? inputToC(parseFloat(temps.rr)) : null,
       tyre_temp_cold_fl_c:  openSession.cold_fl_temp_c ?? null,
       tyre_temp_cold_fr_c:  openSession.cold_fr_temp_c ?? null,
       tyre_temp_cold_rl_c:  openSession.cold_rl_temp_c ?? null,
@@ -193,6 +207,12 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
       ambient_temp_c:       openSession.ambient_session_start ?? openSession.ambient_temp_c,
       ambient_temp_end_c:   weather?.temp_c ?? null,
       ambient_source:       openSession.ambient_source as 'auto' | 'manual',
+      hot_entry_duration_seconds: hotStartedAt
+        ? Math.round((Date.now() - hotStartedAt) / 1000)
+        : Math.round((Date.now() - hotStartRef.current) / 1000),
+      cold_entry_duration_seconds: openSession.cold_entry_duration_seconds ?? null,
+      is_hidden: openSession.is_hidden ?? !settings.community_contributions,
+      created_at: openSession.historic_date ?? new Date().toISOString(),
     };
 
     try {
@@ -203,7 +223,20 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
-    navigation.navigate('Confirmation');
+    if (openSession.historic_date) {
+      navigation.replace('HistoricEventSetup', {
+        vehicle:        activeEvent.vehicle,
+        tireFront:      activeEvent.tire_front,
+        tireRear:       activeEvent.tire_rear,
+        tireSetName:    activeEvent.tire_set_name ?? '',
+        selectedTrack:  activeEvent.track,
+        selectedConfig: activeEvent.track_config ?? null,
+        sessionType:    activeEvent.session_type,
+        prefilled:      true,
+      });
+    } else {
+      navigation.navigate('Confirmation');
+    }
   }
 
   function handleSubmit() {

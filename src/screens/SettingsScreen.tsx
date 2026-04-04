@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Alert, Modal,
+  StyleSheet, ScrollView, Alert, Modal, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -15,6 +15,12 @@ import {
 } from '../types';
 
 const SETTINGS_KEY = 'trackpressure:user_settings';
+
+const { width, height } = Dimensions.get('window');
+//console.log('Window dimensions:', width, height);
+//console.log('Screen dimensions:', Dimensions.get('screen').width, Dimensions.get('screen').height);
+const isTablet = Math.min(width, height) >= 720;
+//console.log('isTablet:', isTablet);
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -139,7 +145,7 @@ export default function SettingsScreen({ navigation }: Props) {
   function ToggleRow({
     label, value, onChange,
   }: {
-    label: string; value: boolean; onChange: (v: boolean) => void;
+    label: string; value: boolean; onChange: (v: boolean) => void | Promise<void>;
   }) {
     return (
       <View style={styles.settingRow}>
@@ -294,14 +300,66 @@ export default function SettingsScreen({ navigation }: Props) {
         <Text style={styles.sectionHead}>Pyrometer</Text>
         <View style={styles.group}>
           <ToggleRow
-            label="Log tyre temperatures"
+            label="Log tire temperatures"
             value={settings.pyrometer_enabled}
-            onChange={v => updateSetting('pyrometer_enabled', v)}
+            onChange={async v => {
+              const updated = {
+                ...settings,
+                pyrometer_enabled:  v,
+                pyrometer_gradient: v ? settings.pyrometer_gradient : false,
+              };
+              setSettings(updated);
+              await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+            }}
           />
+          {settings.pyrometer_enabled && (
+            <>
+              <View style={styles.groupDivider} />
+              <View style={styles.subToggleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingLabel}>
+                    Tire gradient recording
+                  </Text>
+                  {!isTablet && !settings.pyrometer_gradient && (
+                    <Text style={styles.subToggleNote}>Recommended for tablet</Text>
+                  )}
+                  {!isTablet && settings.pyrometer_gradient && (
+                    <Text style={[styles.subToggleNote, { color: colors.warning }]}>
+                      Enabled on phone — screen space limited
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[styles.toggle, settings.pyrometer_gradient && styles.toggleOn]}
+                  onPress={() => {
+                    if (!isTablet && !settings.pyrometer_gradient) {
+                      Alert.alert(
+                        'Not recommended on phone',
+                        'Tire gradient recording is designed for tablets. The screen layout will be cramped on a phone and data entry will be harder trackside. Enable anyway?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Enable anyway',
+                            onPress: () => updateSetting('pyrometer_gradient', true),
+                          },
+                        ]
+                      );
+                    } else {
+                      updateSetting('pyrometer_gradient', !settings.pyrometer_gradient);
+                    }
+                  }}
+                >
+                  <View style={[styles.toggleThumb, settings.pyrometer_gradient && styles.toggleThumbOn]} />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
         {settings.pyrometer_enabled && (
-          <Text style={[styles.sectionNote]}>
-            When enabled, tyre temperature entry replaces the standard hot pressure screen with a corner-by-corner flow capturing both pressure and temperature together.
+          <Text style={styles.sectionNote}>
+            {settings.pyrometer_gradient && isTablet
+              ? 'Gradient recording captures inner, mid and outer temps per corner on a single screen. Tablet required.'
+              : 'When enabled, tire temperature entry replaces the standard hot pressure screen with a corner-by-corner flow capturing both pressure and temperature together.'}
           </Text>
         )}
 
@@ -399,6 +457,15 @@ const styles = StyleSheet.create({
   sectionNote: {
     fontSize: 12, color: colors.textMuted, lineHeight: 18,
     marginTop: spacing.sm, paddingHorizontal: spacing.sm,
+  },
+  subToggleRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    paddingLeft: spacing.xl + spacing.sm,
+  },
+  subToggleRowDisabled: { opacity: 0.5 },
+  subToggleNote: {
+    fontSize: 11, color: colors.textMuted, fontStyle: 'italic', marginTop: 2,
   },
   signOutBtn: {
     marginTop: spacing.xl,

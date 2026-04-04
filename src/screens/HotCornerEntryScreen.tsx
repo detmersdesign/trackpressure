@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet,
@@ -34,6 +34,7 @@ export default function HotCornerEntryScreen({ navigation }: Props) {
 
   const [activeCorner, setActiveCorner] = useState<Corner>('fl');
   const [activeField,  setActiveField]  = useState<'pressure' | 'temp'>('pressure');
+  const hotStartRef = useRef<number>(Date.now());
 
   // ── Numpad handler ────────────────────────────────────────────────────────
   function handleNumPress(key: string) {
@@ -68,6 +69,7 @@ export default function HotCornerEntryScreen({ navigation }: Props) {
         mode: 'hot',
         pressures,
         temps,
+        hotStartedAt: hotStartRef.current,
       });
     }
   }
@@ -82,6 +84,7 @@ export default function HotCornerEntryScreen({ navigation }: Props) {
         mode: 'hot',
         pressures,
         temps,
+        hotStartedAt: hotStartRef.current,
       });
     }
   }
