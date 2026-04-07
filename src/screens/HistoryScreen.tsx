@@ -10,7 +10,7 @@ import { DeltaBadge } from '../components/DeltaBadge';
 import { useEvent } from '../hooks/useEventContext';
 import { computeRecommendation } from '../lib/recommendations';
 import { supabase } from '../lib/supabase';
-import Svg, { Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Line, Text as SvgText, Polygon, Path } from 'react-native-svg';
 import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
 import { useSettings } from '../hooks/useSettings';
 
@@ -33,6 +33,10 @@ interface Session {
   user_id: string | null;
   track_id?: string;
   track_name?: string;
+  tyre_temp_hot_fl_c: number | null;
+  tyre_temp_hot_fr_c: number | null;
+  tyre_temp_hot_rl_c: number | null;
+  tyre_temp_hot_rr_c: number | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -178,6 +182,8 @@ export default function HistoryScreen({ navigation, route }: Props) {
           cold_front_psi, cold_rear_psi,
           hot_front_psi, hot_rear_psi,
           hot_fl_psi, hot_fr_psi, hot_rl_psi, hot_rr_psi,
+          tyre_temp_hot_fl_c, tyre_temp_hot_fr_c,
+          tyre_temp_hot_rl_c, tyre_temp_hot_rr_c,
           signal_score, user_id, track_id,
           tracks (name)
         `)
@@ -231,6 +237,25 @@ export default function HistoryScreen({ navigation, route }: Props) {
     ? computeRecommendation(personalForRec as any, forRecommendation as any, ambientToday)
     : null;
 
+  // ── Chart view mode ──────────────────────────────────────────────────────────
+  const [chartMode, setChartMode] = useState<'pressure' | 'temp'>('pressure');
+
+  // Temp colour helper — same scale as gradient entry screen (±6°C from reference)
+  function tempToColor(avgC: number | null, refC: number | null): string {
+    if (avgC == null || refC == null) return 'none';
+    const scale = 6;
+    const ratio = Math.max(0, Math.min(1, 0.5 + (avgC - refC) / (scale * 2)));
+    if (ratio < 0.45) {
+      const t = ratio / 0.45;
+      return `rgb(${Math.round(40 + t * 50)},${Math.round(95 + t * 80)},220)`;
+    } else if (ratio < 0.55) {
+      return `rgb(210,210,200)`;
+    } else {
+      const t = (ratio - 0.55) / 0.45;
+      return `rgb(${Math.round(220 + t * 35)},${Math.round(220 - t * 220)},${Math.round(210 - t * 210)})`;
+    }
+  }
+
   // ── Scatter chart — single track only ─────────────────────────────────────
 
   const chartSessions = sessions.filter(s => s.ambient_temp_c != null);
@@ -268,6 +293,34 @@ export default function HistoryScreen({ navigation, route }: Props) {
   const trendX2 = toX(maxT); const trendY2 = toY(slope * maxT + intercept);
   const todayX  = toX(ambientToday);
   const todayY  = toY(slope * ambientToday + intercept);
+
+  // Temp reference — centre of optimal window, or avg of all session hot temps
+  const tempRefC: number | null = (() => {
+    const allTemps = chartSessions.flatMap(s => [
+      s.tyre_temp_hot_fl_c, s.tyre_temp_hot_fr_c,
+      s.tyre_temp_hot_rl_c, s.tyre_temp_hot_rr_c,
+    ].filter((t): t is number => t != null));
+    if (allTemps.length === 0) return null;
+    return allTemps.reduce((a, b) => a + b, 0) / allTemps.length;
+  })();
+
+  function sessionAvgTempC(s: Session): number | null {
+    const vals = [s.tyre_temp_hot_fl_c, s.tyre_temp_hot_fr_c,
+                  s.tyre_temp_hot_rl_c, s.tyre_temp_hot_rr_c]
+      .filter((t): t is number => t != null);
+    if (vals.length === 0) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+
+  // Today's most recent session avg temp (if it has temp data)
+  const todaySessionAvgC = (() => {
+    const todaySessions = chartSessions.filter(s =>
+      s.user_id === currentUserId &&
+      new Date(s.created_at).toDateString() === new Date().toDateString()
+    );
+    if (todaySessions.length === 0) return null;
+    return sessionAvgTempC(todaySessions[0]);
+  })();
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -392,6 +445,27 @@ export default function HistoryScreen({ navigation, route }: Props) {
         {/* Scatter chart — single track only */}
         {hasChartData && (
           <>
+            {/* Chart mode toggle — temp view only available when there is temp data */}
+            {hasChartData && chartSessions.some(s => s.tyre_temp_hot_fl_c != null) && (
+              <View style={styles.chartToggleRow}>
+                <TouchableOpacity
+                  style={[styles.chartToggleOpt, chartMode === 'pressure' && styles.chartToggleOptActive]}
+                  onPress={() => setChartMode('pressure')}
+                >
+                  <Text style={[styles.chartToggleText, chartMode === 'pressure' && styles.chartToggleTextActive]}>
+                    Pressure
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.chartToggleOpt, chartMode === 'temp' && styles.chartToggleOptActive]}
+                  onPress={() => setChartMode('temp')}
+                >
+                  <Text style={[styles.chartToggleText, chartMode === 'temp' && styles.chartToggleTextActive]}>
+                    Temp
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
             <Text style={globalStyles.sectionLabel}>Ambient temp vs cold pressure</Text>
             <View style={globalStyles.card}>
               <Svg width={W} height={CHART_H}>
@@ -427,34 +501,90 @@ export default function HistoryScreen({ navigation, route }: Props) {
                   const tDisplay = settings.temperature_unit === 'f'
                     ? s.ambient_temp_c! * 9/5 + 32
                     : s.ambient_temp_c!;
+                  const avgC  = sessionAvgTempC(s);
+                  const hasTmp = avgC != null;
+                  let fill: string;
+                  let stroke: string = 'none';
+                  let strokeW = 0;
+                  if (chartMode === 'temp') {
+                    if (hasTmp) {
+                      fill = tempToColor(avgC, tempRefC);
+                    } else {
+                      fill = 'none'; stroke = colors.textMuted; strokeW = 1.5;
+                    }
+                  } else {
+                    fill = s.user_id === currentUserId ? colors.accent : colors.textMuted;
+                  }
                   return (
                     <Circle key={s.id}
                       cx={toX(tDisplay)}
                       cy={toY(s.cold_front_psi)}
                       r={4}
-                      fill={s.user_id === currentUserId ? colors.accent : colors.textMuted}
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={strokeW}
                       opacity={0.85}
                     />
                   );
                 })}
-                <Circle cx={todayX} cy={todayY} r={6} fill={colors.purple} opacity={0.9} />
-                <SvgText x={todayX + 8} y={todayY + 4} fontSize={9} fill={colors.purple}>
-                  today
-                </SvgText>
+                {(() => {
+                  const todayColor = chartMode === 'temp' && todaySessionAvgC != null
+                    ? tempToColor(todaySessionAvgC, tempRefC)
+                    : colors.purple;
+                  const d = 6;
+                  const pts = `${todayX},${todayY - d} ${todayX + d},${todayY} ${todayX},${todayY + d} ${todayX - d},${todayY}`;
+                  return (
+                    <>
+                      <Polygon points={pts} fill={todayColor} opacity={0.95} />
+                      <SvgText x={todayX + 9} y={todayY + 4} fontSize={9} fill={todayColor}>today</SvgText>
+                    </>
+                  );
+                })()}
               </Svg>
               <View style={styles.chartLegend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
-                  <Text style={typography.caption}>Your sessions</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
-                  <Text style={typography.caption}>Community</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.purple }]} />
-                  <Text style={typography.caption}>Today ({displayTemp(ambientTodayC)}{tempUnit()})</Text>
-                </View>
+                {chartMode === 'pressure' ? (
+                  <>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
+                      <Text style={typography.caption}>Your sessions</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
+                      <Text style={typography.caption}>Community</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <Svg width={10} height={10} viewBox="0 0 10 10">
+                        <Polygon points="5,0 10,5 5,10 0,5" fill={colors.purple} />
+                      </Svg>
+                      <Text style={typography.caption}>Today ({displayTemp(ambientTodayC)}{tempUnit()})</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: 'rgb(40,120,220)' }]} />
+                      <Text style={typography.caption}>Under temp</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: 'rgb(210,210,200)' }]} />
+                      <Text style={typography.caption}>Optimal</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: 'rgb(255,80,80)' }]} />
+                      <Text style={typography.caption}>Over temp</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { borderWidth: 1.5, borderColor: colors.textMuted, backgroundColor: 'transparent' }]} />
+                      <Text style={typography.caption}>No temp data</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <Svg width={10} height={10} viewBox="0 0 10 10">
+                        <Polygon points="5,0 10,5 5,10 0,5" fill={colors.purple} />
+                      </Svg>
+                      <Text style={typography.caption}>Today</Text>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
           </>
@@ -489,7 +619,15 @@ export default function HistoryScreen({ navigation, route }: Props) {
             const hotDelta = session.hot_front_psi != null
               ? Math.round((parseFloat(displayPressure(session.hot_front_psi)) - parseFloat(displayPressure(session.cold_front_psi))) * 100) / 100
               : null;
-            const isPersonal = session.user_id === currentUserId;
+            const isPersonal   = session.user_id === currentUserId;
+            const sessionAvgC  = sessionAvgTempC(session);
+            const hasTemps     = sessionAvgC != null;
+            const rowDotColor  = chartMode === 'temp' && hasTemps
+              ? tempToColor(sessionAvgC, tempRefC)
+              : isPersonal ? colors.accent : colors.textMuted;
+            const rowDotStyle  = chartMode === 'temp' && !hasTemps
+              ? { borderWidth: 1.5, borderColor: colors.textMuted, backgroundColor: 'transparent' }
+              : { backgroundColor: rowDotColor };
 
             return (
               <TouchableOpacity
@@ -498,18 +636,23 @@ export default function HistoryScreen({ navigation, route }: Props) {
                 onPress={() => navigation.navigate('DeltaAnalysis')}
                 activeOpacity={0.7}
               >
-                <View style={[
-                  styles.sessionDot,
-                  { backgroundColor: isPersonal ? colors.accent : colors.textMuted },
-                ]} />
+                <View style={[styles.sessionDot, rowDotStyle]} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[typography.body, { fontWeight: '500' }]}>
-                    {new Date(session.created_at).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric', year: 'numeric',
-                    })}
-                    {' · '}{SESSION_TYPE_LABELS[session.session_type] ?? session.session_type}
-                    {session.ambient_temp_c != null ? ` · ${displayTemp(session.ambient_temp_c)}${tempUnit()}` : ''}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Text style={[typography.body, { fontWeight: '500' }]}>
+                      {new Date(session.created_at).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                      {' · '}{SESSION_TYPE_LABELS[session.session_type] ?? session.session_type}
+                      {session.ambient_temp_c != null ? ` · ${displayTemp(session.ambient_temp_c)}${tempUnit()}` : ''}
+                    </Text>
+                    {hasTemps && (
+                      <Svg width={8} height={12} viewBox="0 0 10 16" style={{ marginLeft: 4 }}>
+                        <Path d="M4 9V2.5 A1.5 1.5 0 0 1 6 2.5V9 A3.5 3.5 0 1 1 4 9Z" fill={colors.accent} opacity={0.9}/>
+                        <Path d="M4.6 8.8V3" stroke="#000" strokeWidth="0.8" opacity={0.3}/>
+                      </Svg>
+                    )}
+                  </View>
                   <Text style={typography.caption}>
                     {trackView === 'all' && session.track_name
                       ? `${session.track_name}\n`
@@ -651,4 +794,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSubtle,
   },
   analysisBtnText: { fontSize: 14, fontWeight: '500', color: colors.accent },
+  chartToggleRow: {
+    flexDirection: 'row', gap: 0, marginBottom: spacing.sm,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md, padding: 3,
+    borderWidth: 0.5, borderColor: colors.border,
+    alignSelf: 'flex-start',
+  },
+  chartToggleOpt: {
+    paddingHorizontal: 14, paddingVertical: 5,
+    borderRadius: radius.sm,
+  },
+  chartToggleOptActive: {
+    backgroundColor: colors.bgHighlight,
+    borderWidth: 0.5, borderColor: colors.border,
+  },
+  chartToggleText: { fontSize: 12, color: colors.textMuted },
+  chartToggleTextActive: { fontSize: 12, color: colors.textPrimary, fontWeight: '500' },
 });

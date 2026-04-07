@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
   },
   key: {
     width: Dimensions.get('window').width / 3,
-    paddingVertical: 12,
+    paddingVertical: 10.5,
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 0.5,

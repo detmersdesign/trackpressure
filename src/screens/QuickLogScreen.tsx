@@ -436,9 +436,6 @@ export default function QuickLogScreen({ navigation, route }: Props) {
           {fourCornerCold ? (
             // ── Four corner cold entry ──────────────────────
             <>
-              <Text style={globalStyles.sectionLabel}>
-                Cold pressures — four corners ({pressureUnit()})
-              </Text>
               <Text style={[typography.caption, {
                 textAlign: 'center', color: colors.textMuted, marginBottom: spacing.sm,
               }]}>

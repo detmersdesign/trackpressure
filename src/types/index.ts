@@ -131,63 +131,63 @@ export interface PressureEntry {
   tire_id: string;
   track_id: string;
   track_config_id?: string;
-  cold_front_psi: number;
-  cold_rear_psi: number;
+  cold_front_psi: number | null;
+  cold_rear_psi: number | null;
 
   // Four-corner hot readings (preferred path)
-  hot_fl_psi?: number;
-  hot_fr_psi?: number;
-  hot_rl_psi?: number;
-  hot_rr_psi?: number;
+  hot_fl_psi?: number | null;
+  hot_fr_psi?: number | null;
+  hot_rl_psi?: number | null;
+  hot_rr_psi?: number | null;
 
   // Legacy averaged fields — auto-populated from corners before insert
   // so existing community queries continue to work unchanged.
-  hot_front_psi?: number;
-  hot_rear_psi?: number;
+  hot_front_psi?: number | null;
+  hot_rear_psi?: number | null;
 
-  cold_fl_psi?: number;
-  cold_fr_psi?: number;
-  cold_rl_psi?: number;
-  cold_rr_psi?: number;
+  cold_fl_psi?: number | null;
+  cold_fr_psi?: number | null;
+  cold_rl_psi?: number | null;
+  cold_rr_psi?: number | null;
 
   // Tyre temperatures — Tier 1 (single mid temp per corner)
-  tyre_temp_hot_fl_c?: number;
-  tyre_temp_hot_fr_c?: number;
-  tyre_temp_hot_rl_c?: number;
-  tyre_temp_hot_rr_c?: number;
-  tyre_temp_cold_fl_c?: number;
-  tyre_temp_cold_fr_c?: number;
-  tyre_temp_cold_rl_c?: number;
-  tyre_temp_cold_rr_c?: number;
+  tyre_temp_hot_fl_c?: number | null;
+  tyre_temp_hot_fr_c?: number | null;
+  tyre_temp_hot_rl_c?: number | null;
+  tyre_temp_hot_rr_c?: number | null;
+  tyre_temp_cold_fl_c?: number | null;
+  tyre_temp_cold_fr_c?: number | null;
+  tyre_temp_cold_rl_c?: number | null;
+  tyre_temp_cold_rr_c?: number | null;
 
   // Tyre temperatures — Tier 2 (inner/mid/outer per corner)
-  tyre_temp_hot_fl_inner_c?: number;
-  tyre_temp_hot_fl_mid_c?: number;
-  tyre_temp_hot_fl_outer_c?: number;
-  tyre_temp_hot_fr_inner_c?: number;
-  tyre_temp_hot_fr_mid_c?: number;
-  tyre_temp_hot_fr_outer_c?: number;
-  tyre_temp_hot_rl_inner_c?: number;
-  tyre_temp_hot_rl_mid_c?: number;
-  tyre_temp_hot_rl_outer_c?: number;
-  tyre_temp_hot_rr_inner_c?: number;
-  tyre_temp_hot_rr_mid_c?: number;
-  tyre_temp_hot_rr_outer_c?: number;
+  tyre_temp_hot_fl_inner_c?: number | null;
+  tyre_temp_hot_fl_mid_c?: number | null;
+  tyre_temp_hot_fl_outer_c?: number | null;
+  tyre_temp_hot_fr_inner_c?: number | null;
+  tyre_temp_hot_fr_mid_c?: number | null;
+  tyre_temp_hot_fr_outer_c?: number | null;
+  tyre_temp_hot_rl_inner_c?: number | null;
+  tyre_temp_hot_rl_mid_c?: number | null;
+  tyre_temp_hot_rl_outer_c?: number | null;
+  tyre_temp_hot_rr_inner_c?: number | null;
+  tyre_temp_hot_rr_mid_c?: number | null;
+  tyre_temp_hot_rr_outer_c?: number | null;
 
-  ambient_temp_c?: number;
-  ambient_temp_end_c?: number;
-  ambient_session_start?: number;
+  ambient_temp_c?: number | null;
+  ambient_temp_end_c?: number | null;
+  ambient_session_start?: number | null;
   ambient_source?: 'auto' | 'manual';
   session_type: SessionType;
   notes?: string;
-  signal_score?: number;
+  signal_score?: number | null;
   in_target_range?: boolean;
   delta_consistent?: boolean;
-  flag_count?: number;
+  flag_count?: number | null;
   is_outlier?: boolean;
   is_hidden?: boolean;
-  cold_entry_duration_seconds?: number;
-  hot_entry_duration_seconds?: number;
+  cold_entry_duration_seconds?: number | null;
+  hot_entry_duration_seconds?: number | null;
   created_at: string;
 }
 

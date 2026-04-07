@@ -84,12 +84,14 @@ export default function ColdSavedScreen({ navigation }: Props) {
               ] as { label: string; val: number | undefined }[]).map(({ label, val }) => (
                 <View key={label} style={styles.coldCornerBox}>
                   <Text style={styles.coldCornerLabel}>{label}</Text>
-                  <Text style={styles.coldVal}>
-                    {val !== undefined ? displayPressure(val) : '—'}
-                  </Text>
-                  <Text style={[typography.caption, { marginTop: 4 }]}>
-                    {pressureUnit()} cold
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 4 }}>
+                    <Text style={styles.coldVal}>
+                      {val !== undefined ? displayPressure(val) : '—'}
+                    </Text>
+                    <Text style={[typography.caption, { color: colors.textMuted }]}>
+                      {pressureUnit()}
+                    </Text>
+                  </View>
                 </View>
               ))}
             </View>
@@ -239,11 +241,12 @@ const styles = StyleSheet.create({
   coldCornerBox: {
     width: '47%', backgroundColor: colors.bgCard,
     borderRadius: radius.md, borderWidth: 0.5, borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.md, alignItems: 'center',
   },
   coldCornerLabel: {
     fontSize: 10, color: colors.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3,
+    textTransform: 'uppercase', letterSpacing: 0.4,
+    marginBottom: 3, textAlign: 'center',
   },
   coldVal: {
     fontFamily: 'monospace',
@@ -259,7 +262,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningSubtle,
     borderRadius: radius.md,
     borderWidth: 0.5, borderColor: colors.warning,
-    padding: spacing.md,
+    padding: spacing.md, alignItems: 'center',
   },
   cornerLabel: {
     fontSize: 10, color: colors.warning, opacity: 0.8,

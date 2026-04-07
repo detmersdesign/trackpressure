@@ -138,21 +138,6 @@ export default function HotCornerEntryScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
-      {/* Progress bar */}
-      <View style={styles.progressRow}>
-        {CORNERS.map(c => (
-          <View
-            key={c}
-            style={[
-              styles.progressStep,
-              cornerStatus(c) === 'done'   && styles.progressDone,
-              cornerStatus(c) === 'active' && styles.progressActive,
-            ]}
-          />
-        ))}
-        <Text style={styles.progressLabel}>{activeCorner.toUpperCase()}</Text>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {/* Car diagram */}
@@ -307,17 +292,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm,
     borderBottomWidth: 0.5, borderBottomColor: colors.border,
   },
-  progressRow: {
-    flexDirection: 'row', gap: spacing.sm, alignItems: 'center',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderBottomWidth: 0.5, borderBottomColor: colors.border,
-  },
-  progressStep:   { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.border },
-  progressDone:   { backgroundColor: colors.success },
-  progressActive: { backgroundColor: colors.warning },
-  progressLabel:  { fontSize: 9, color: colors.textMuted, marginLeft: 4 },
 
-  content: { padding: spacing.lg, paddingBottom: spacing.xl },
+  content: { padding: spacing.sm, paddingBottom: spacing.xl },
 
   carDiagram: {
     position: 'relative', height: 80, marginBottom: spacing.sm, alignItems: 'center',

@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrackPressures",
     "slug": "trackpressure",
-    "version": "1.2.5",
+    "version": "1.2.6",
     "scheme": "trackpressure",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",

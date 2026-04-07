@@ -278,15 +278,15 @@ export default function SettingsScreen({ navigation }: Props) {
         <Text style={styles.sectionHead}>Data entry</Text>
         <View style={styles.group}>
           <ToggleRow
-            label="Hot pressures visible by default"
-            value={settings.hot_pressures_visible}
-            onChange={v => updateSetting('hot_pressures_visible', v)}
-          />
-          <View style={styles.groupDivider} />
-          <ToggleRow
             label="Log cold pressures per corner"
             value={settings.four_corner_cold}
             onChange={v => updateSetting('four_corner_cold', v)}
+          />
+          <View style={styles.groupDivider} />
+          <ToggleRow
+            label="Show predicted hot pressures"
+            value={settings.hot_pressures_visible}
+            onChange={v => updateSetting('hot_pressures_visible', v)}
           />
           <View style={styles.groupDivider} />
           <ToggleRow
