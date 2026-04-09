@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Dimensions,
@@ -117,6 +117,20 @@ export default function HotGradientEntryScreen({ navigation }: Props) {
     });
     return init as Record<Corner, CornerState>;
   });
+
+  // Re-seed PSI if openSession wasn't available on first mount (cold start race condition)
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!openSession || seededRef.current) return;
+    seededRef.current = true;
+    setCorners(prev => {
+      const updated: Partial<Record<Corner, CornerState>> = {};
+      GRID_ORDER.forEach(c => {
+        updated[c] = { ...prev[c], psi: seedPsi(c) };
+      });
+      return updated as Record<Corner, CornerState>;
+    });
+  }, [openSession]);
 
   const [activeCorner, setActiveCorner] = useState<Corner>('fl');
   const [submitting, setSubmitting]     = useState(false);

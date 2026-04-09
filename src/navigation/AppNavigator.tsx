@@ -6,16 +6,17 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { colors, spacing } from '../lib/theme';
 import { useEvent } from '../hooks/useEventContext';
 
-import HomeScreen              from '../screens/HomeScreen';
-import EventSetupScreen        from '../screens/EventSetupScreen';
-import QuickLogScreen          from '../screens/QuickLogScreen';
-import ColdSavedScreen         from '../screens/ColdSavedScreen';
-import ConfirmationScreen      from '../screens/ConfirmationScreen';
-import HistoryScreen           from '../screens/HistoryScreen';
-import DeltaAnalysisScreen     from '../screens/DeltaAnalysisScreen';
-import GarageScreen            from '../screens/GarageScreen';
-import SettingsScreen          from '../screens/SettingsScreen';
-import EditGarageVehicleScreen    from '../screens/EditGarageVehicleScreen';
+import HomeScreen               from '../screens/HomeScreen';
+import EventSetupScreen         from '../screens/EventSetupScreen';
+import QuickLogScreen           from '../screens/QuickLogScreen';
+import ColdSavedScreen          from '../screens/ColdSavedScreen';
+import ConfirmationScreen       from '../screens/ConfirmationScreen';
+import HistoryScreen            from '../screens/HistoryScreen';
+import DeltaAnalysisScreen      from '../screens/DeltaAnalysisScreen';
+import TyreTempAnalysisScreen   from '../screens/TyreTempAnalysisScreen';
+import GarageScreen             from '../screens/GarageScreen';
+import SettingsScreen           from '../screens/SettingsScreen';
+import EditGarageVehicleScreen  from '../screens/EditGarageVehicleScreen';
 import ColdCornerEntryScreen    from '../screens/ColdCornerEntryScreen';
 import HotCornerEntryScreen     from '../screens/HotCornerEntryScreen';
 import HotGradientEntryScreen   from '../screens/HotGradientEntryScreen';
@@ -50,6 +51,7 @@ function HistoryStackNav() {
     <HistoryStack.Navigator screenOptions={{ headerShown: false }}>
       <HistoryStack.Screen name="History"           component={HistoryScreen} />
       <HistoryStack.Screen name="DeltaAnalysis"     component={DeltaAnalysisScreen} />
+      <HistoryStack.Screen name="TyreTempAnalysis"  component={TyreTempAnalysisScreen} />
       <HistoryStack.Screen name="QuickLog"          component={QuickLogScreen} />
       <HistoryStack.Screen name="ColdCornerEntry"   component={ColdCornerEntryScreen} />
       <HistoryStack.Screen name="HotCornerEntry"    component={HotCornerEntryScreen} />

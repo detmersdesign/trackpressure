@@ -26,9 +26,11 @@ const CORNER_LABELS: Record<Corner, string> = {
   rl: 'Rear left',
 };
 
-function pressureLooksWrong(val: string): boolean {
+function pressureLooksWrong(val: string, unit: 'psi' | 'bar' | 'kpa'): boolean {
   const n = parseFloat(val);
   if (isNaN(n)) return false;
+  if (unit === 'bar') return n < 1.0 || n > 4.1;
+  if (unit === 'kpa')  return n < 100  || n > 414;
   return n < 15 || n > 60;
 }
 
@@ -71,7 +73,7 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
 
   // ── Flagging ──────────────────────────────────────────────────────────────
   function cornerHasWarning(c: Corner): boolean {
-    if (pressures[c] && pressureLooksWrong(pressures[c])) return true;
+    if (pressures[c] && pressureLooksWrong(pressures[c], settings.pressure_unit)) return true;
     if (temps[c]     && tempLooksWrong(temps[c], settings.temperature_unit) )         return true;
     return false;
   }
@@ -120,15 +122,27 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
 
     const ambientC = ambientTempC ?? weather?.temp_c;
 
-    // Per-corner prediction: use corner temp if entered, else ambient
+    // Fetch tyre target operating temperature — midpoint of min/max range.
+    // Falls back to 60°C if not populated for this compound.
+    const DEFAULT_TYRE_TEMP_C = 60;
+    let tyreTempC = DEFAULT_TYRE_TEMP_C;
+    try {
+      const { data: targetData } = await supabase
+        .from('tire_targets')
+        .select('target_temp_min_c, target_temp_max_c')
+        .eq('tire_id', activeEvent.tire_front.id)
+        .maybeSingle();
+      if (targetData?.target_temp_min_c != null && targetData?.target_temp_max_c != null) {
+        tyreTempC = (targetData.target_temp_min_c + targetData.target_temp_max_c) / 2;
+      }
+    } catch {}
+
+    // Per-corner prediction: cold tyre temp (or ambient) is the starting temp.
+    // tyreTempC is the compound's target operating temp from tire_targets, or 60°C default.
     function predictForCorner(coldPsi: number, c: Corner): number {
       const rawTemp = temps[c] ? inputToC(parseFloat(temps[c])) : NaN;
-      const tC = !isNaN(rawTemp) ? rawTemp : ambientC;
-      if (tC !== undefined) {
-        const tF = tC !== undefined ? tC * 9/5 + 32 : undefined;
-        return predictHotRounded(coldPsi, tF);
-      }
-      return predictHotRounded(coldPsi);
+      const startC = !isNaN(rawTemp) ? rawTemp : ambientC ?? 20;
+      return predictHotRounded(coldPsi, startC, tyreTempC);
     }
 
     const session: OpenSession = {

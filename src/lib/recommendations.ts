@@ -1,25 +1,24 @@
 import { PressureEntry, TireTarget, Recommendation } from '../types';
-//import { TIRE_TARGETS } from '../data/staticData';
 
 // Shared constants for gas law prediction.
-// In production these come from the weather hook and user profile;
-// defaults are used as fallback when context is unavailable.
-const ATM_PSI    = 14.696;
-const DEFAULT_AMBIENT_F  = 68;   // 20°C — conservative default
-const DEFAULT_TIRE_TEMP_F = 140; // typical HPDE operating target
+// All temperatures are in Celsius internally; Kelvin used for gas law math.
+// Defaults are used as fallback when weather/context is unavailable.
+const ATM_PSI             = 14.696;
+const DEFAULT_AMBIENT_C   = 20;   // 20°C — conservative default
+const DEFAULT_TYRE_TEMP_C = 60;   // ~140°F — typical HPDE operating target
 
-function fToRankine(f: number): number { return f + 459.67; }
+function cToKelvin(c: number): number { return c + 273.15; }
 function roundHalf(v: number): number  { return Math.round(v * 2) / 2; }
 
-// Predict hot pressure from a cold set using the ideal gas law,
-// rounded to the nearest 0.5 PSI so it seeds the stepper on a valid step.
-// Optionally accepts ambient and tire temp overrides from the weather hook.
+// Predict hot pressure from a cold set using the ideal gas law (Gay-Lussac).
+// All temperatures must be in Celsius — converted to Kelvin internally.
+// Rounded to the nearest 0.5 PSI so it seeds the stepper on a valid step.
 export function predictHotRounded(
   coldPsi: number,
-  ambientF: number = DEFAULT_AMBIENT_F,
-  tyreTempF: number = DEFAULT_TIRE_TEMP_F
+  ambientC: number = DEFAULT_AMBIENT_C,
+  tyreTempC: number = DEFAULT_TYRE_TEMP_C
 ): number {
-  const raw = (coldPsi + ATM_PSI) * (fToRankine(tyreTempF) / fToRankine(ambientF)) - ATM_PSI;
+  const raw = (coldPsi + ATM_PSI) * (cToKelvin(tyreTempC) / cToKelvin(ambientC)) - ATM_PSI;
   return roundHalf(raw);
 }
 
@@ -53,8 +52,8 @@ export function computeSignalScore(entry: Partial<PressureEntry>, tireId: string
 
   // Outcome quality — use front average (or FL as proxy) for range check
   const hotRef = entry.hot_front_psi ?? entry.hot_fl_psi;
-  if (target && hotRef !== undefined) {
-    const delta = Math.abs(hotDeltaFromRange(hotRef, target));
+  if (target && hotRef !== null) {
+    const delta = Math.abs(hotDeltaFromRange(hotRef as number, target));
     if (delta === 0) score *= 1.2;
     else if (delta <= 2) score *= 0.9;
     else score *= 0.6;
@@ -108,26 +107,32 @@ export function computeRecommendation(
     return weightSum > 0 ? Math.round((weightedSum / weightSum) * 10) / 10 : 0;
   }
 
-  const personalFront = tempWeightedAvg(personalSessions, 'cold_front_psi');
-  const personalRear = tempWeightedAvg(personalSessions, 'cold_rear_psi');
+  const personalFront  = tempWeightedAvg(personalSessions,  'cold_front_psi');
+  const personalRear   = tempWeightedAvg(personalSessions,  'cold_rear_psi');
   const communityFront = tempWeightedAvg(communitySessions, 'cold_front_psi');
-  const communityRear = tempWeightedAvg(communitySessions, 'cold_rear_psi');
+  const communityRear  = tempWeightedAvg(communitySessions, 'cold_rear_psi');
+
+  const hasCommunity = communitySessions.length > 0;
 
   const blendedFront =
-    personalCount > 0
+    personalCount > 0 && hasCommunity
       ? Math.round((personalFront * personalWeight + communityFront * communityWeight) * 10) / 10
-      : communityFront;
+      : personalCount > 0
+        ? personalFront
+        : communityFront;
   const blendedRear =
-    personalCount > 0
+    personalCount > 0 && hasCommunity
       ? Math.round((personalRear * personalWeight + communityRear * communityWeight) * 10) / 10
-      : communityRear;
+      : personalCount > 0
+        ? personalRear
+        : communityRear;
 
   return {
-    cold_front_psi: blendedFront,
-    cold_rear_psi: blendedRear,
-    personal_weight: Math.round(personalWeight * 100),
+    cold_front_psi:   blendedFront,
+    cold_rear_psi:    blendedRear,
+    personal_weight:  Math.round(personalWeight * 100),
     community_weight: Math.round(communityWeight * 100),
-    session_count: personalCount,
+    session_count:    personalCount,
     basis: personalCount === 0 ? 'community' : personalWeight > 0.6 ? 'personal' : 'blended',
   };
 }

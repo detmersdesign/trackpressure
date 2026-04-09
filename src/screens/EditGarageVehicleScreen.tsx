@@ -23,6 +23,8 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
   const [saving, setSaving]                 = useState(false);
   const [addTyreVisible, setAddTyreVisible] = useState(false);
   const [localTireSets, setLocalTireSets]   = useState<GarageTireSet[]>(garageVehicle.tire_sets ?? []);
+  const [editingTireSetId, setEditingTireSetId] = useState<string | null>(null);
+  const [editingName, setEditingName]           = useState('');
   const { displayPressure, pressureUnit } = useSettings();
 
   // ── All garage vehicles for reordering ───────────────────────────────────
@@ -137,6 +139,14 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
   }
 
   // ── Delete tire set ───────────────────────────────────────────────────────
+  async function handleRenameTireSet(id: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) { setEditingTireSetId(null); return; }
+    await supabase.from('garage_tire_sets').update({ name: trimmed }).eq('id', id);
+    setLocalTireSets(prev => prev.map(ts => ts.id === id ? { ...ts, name: trimmed } : ts));
+    setEditingTireSetId(null);
+  }
+
   function handleDeleteTyreSet(tireSet: GarageTireSet) {
     Alert.alert(
       'Delete tire set',
@@ -291,7 +301,21 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
             <View key={ts.id} style={styles.tyreRow}>
               <View style={{ flex: 1 }}>
                 <View style={styles.tyreNameRow}>
-                  <Text style={styles.tyreName}>{ts.name}</Text>
+                  {editingTireSetId === ts.id ? (
+                    <TextInput
+                      style={styles.tyreNameInput}
+                      value={editingName}
+                      onChangeText={setEditingName}
+                      onSubmitEditing={() => handleRenameTireSet(ts.id, editingName)}
+                      onBlur={() => handleRenameTireSet(ts.id, editingName)}
+                      autoFocus
+                      returnKeyType="done"
+                    />
+                  ) : (
+                    <TouchableOpacity onPress={() => { setEditingTireSetId(ts.id); setEditingName(ts.name); }}>
+                      <Text style={styles.tyreName}>{ts.name} <Text style={styles.tyreNameEdit}>✎</Text></Text>
+                    </TouchableOpacity>
+                  )}
                   {ts.is_default && (
                     <View style={styles.defaultBadge}>
                       <Text style={styles.defaultBadgeText}>default</Text>
@@ -524,7 +548,7 @@ const styles = StyleSheet.create({
   },
   container: { padding: spacing.lg, paddingBottom: 40 },
   vehicleHeader: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.sm,
     paddingBottom: spacing.lg,
     borderBottomWidth: 0.5, borderBottomColor: colors.border,
   },
@@ -553,7 +577,7 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 11, fontWeight: '500', color: colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.5,
-    marginBottom: spacing.sm, marginTop: spacing.lg,
+    marginBottom: spacing.sm, marginTop: spacing.sm,
   },
   input: {
     backgroundColor: colors.bgInput,
@@ -578,6 +602,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: colors.border,
   },
   tyreNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 3 },
+  tyreNameInput: {
+    fontSize: 14, fontWeight: '500', color: colors.textPrimary,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 2, minWidth: 120,
+  },
+  tyreNameEdit: { fontSize: 11, color: colors.textMuted },
   tyreName: { fontSize: 14, fontWeight: '500', color: colors.textPrimary },
   defaultBadge: {
     backgroundColor: colors.accentSubtle, borderRadius: 10,

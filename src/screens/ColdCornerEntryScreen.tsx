@@ -34,6 +34,14 @@ function roundHalf(v: number): number {
   return Math.round(v * 2) / 2;
 }
 
+function pressureLooksWrong(val: string, unit: 'psi' | 'bar' | 'kpa'): boolean {
+  const n = parseFloat(val);
+  if (isNaN(n) || val.length < 2) return false;
+  if (unit === 'bar') return n < 1.0 || n > 4.1;
+  if (unit === 'kpa') return n < 100  || n > 414;
+  return n < 15 || n > 60;
+}
+
 export default function ColdCornerEntryScreen({ navigation }: Props) {
   const { activeEvent, setOpenSession } = useEvent();
   const { weather } = useLocationAndWeather();
@@ -107,6 +115,7 @@ export default function ColdCornerEntryScreen({ navigation }: Props) {
 
   // ── Can move forward ──────────────────────────────────────────────────────
   const currentPressure = pressures[activeCorner];
+  const pressureWarn = pressureLooksWrong(currentPressure, settings.pressure_unit);
   const canAdvance = activeField === 'pressure'
     ? currentPressure.length > 0 && !isNaN(parseFloat(currentPressure))
     : true; // temp is optional — always can advance
@@ -193,17 +202,19 @@ export default function ColdCornerEntryScreen({ navigation }: Props) {
               style={[
                 styles.ftPill,
                 activeField === 'pressure' && styles.ftPillActive,
-                pressures[activeCorner].length > 0 && activeField !== 'pressure' && styles.ftPillDone,
+                pressures[activeCorner].length > 0 && activeField !== 'pressure' && !pressureWarn && styles.ftPillDone,
+                pressures[activeCorner].length > 0 && activeField !== 'pressure' && pressureWarn && styles.ftPillWarn,
               ]}
               onPress={() => setActiveField('pressure')}
             >
               <Text style={[
                 styles.ftPillText,
                 activeField === 'pressure' && styles.ftPillTextActive,
-                pressures[activeCorner].length > 0 && activeField !== 'pressure' && styles.ftPillTextDone,
+                pressures[activeCorner].length > 0 && activeField !== 'pressure' && !pressureWarn && styles.ftPillTextDone,
+                pressures[activeCorner].length > 0 && activeField !== 'pressure' && pressureWarn && styles.ftPillTextWarn,
               ]}>
                 {pressures[activeCorner].length > 0 && activeField !== 'pressure'
-                  ? `${pressureUnit()} ✓` : 'Pressure'}
+                  ? (pressureWarn ? `${pressureUnit()} ⚠` : `${pressureUnit()} ✓`) : 'Pressure'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -238,12 +249,19 @@ export default function ColdCornerEntryScreen({ navigation }: Props) {
               <Text style={styles.acFieldLabel}>Pressure</Text>
               <Text style={[
                 styles.acFieldVal,
-                activeField === 'pressure' && { color: colors.accent },
-                pressures[activeCorner].length > 0 && activeField !== 'pressure' && { color: colors.success },
+                { color: pressureWarn
+                    ? colors.danger
+                    : activeField === 'pressure'
+                      ? colors.accent
+                      : pressures[activeCorner].length > 0
+                        ? colors.success
+                        : colors.textMuted },
               ]}>
                 {pressures[activeCorner] || '—'}
               </Text>
-              <Text style={styles.acFieldUnit}>{pressureUnit()}</Text>
+              <Text style={[styles.acFieldUnit, pressureWarn ? { color: colors.danger } : {}]}>
+                {pressureWarn ? '⚠ check value' : pressureUnit()}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -347,9 +365,11 @@ const styles = StyleSheet.create({
   },
   ftPillActive: { borderColor: colors.accent, backgroundColor: colors.accentSubtle },
   ftPillDone:   { borderColor: colors.success, backgroundColor: colors.successSubtle },
+  ftPillWarn:   { borderColor: colors.danger,  backgroundColor: colors.dangerSubtle },
   ftPillText:       { fontSize: 11, color: colors.textMuted },
   ftPillTextActive: { color: colors.accent, fontWeight: '500' },
   ftPillTextDone:   { color: colors.success, fontWeight: '500' },
+  ftPillTextWarn:   { color: colors.danger,  fontWeight: '500' },
 
   acFields: { flexDirection: 'row', gap: spacing.sm },
   acField: {

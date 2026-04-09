@@ -45,7 +45,7 @@ type FilterKey = 'all' | 'personal' | 'hot_only';
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all',      label: 'All' },
   { key: 'personal', label: 'My sessions' },
-  { key: 'hot_only', label: 'Hot logged' },
+  { key: 'hot_only', label: 'Hot pressures logged' },
 ];
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
@@ -225,7 +225,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
   const forRecommendation = sessions.map(s => ({
     cold_front_psi: s.cold_front_psi,
     cold_rear_psi:  s.cold_rear_psi,
-    ambient_temp_c: s.ambient_temp_c ?? ambientToday,
+    ambient_temp_c: s.ambient_temp_c ?? ambientTodayC,  // always Celsius
     signal_score:   s.signal_score ?? 1.0,
   }));
 
@@ -234,7 +234,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
   );
 
   const recommendation = sessions.length > 0 && trackView === 'single'
-    ? computeRecommendation(personalForRec as any, forRecommendation as any, ambientToday)
+    ? computeRecommendation(personalForRec, forRecommendation, ambientTodayC)  // always Celsius
     : null;
 
   // ── Chart view mode ──────────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ export default function HistoryScreen({ navigation, route }: Props) {
 
   // ── Scatter chart — single track only ─────────────────────────────────────
 
-  const chartSessions = sessions.filter(s => s.ambient_temp_c != null);
+  const chartSessions = sessions.filter(s => s.ambient_temp_c != null && (filter !== 'personal' || s.user_id === currentUserId));
   const hasChartData  = chartSessions.length >= 2 && trackView === 'single';
 
   const temps  = chartSessions.map(s => {
@@ -590,8 +590,49 @@ export default function HistoryScreen({ navigation, route }: Props) {
           </>
         )}
 
+        {/* Analysis links — single track only, above session list */}
+        {trackView === 'single' && selectedTrackId && (
+          <TouchableOpacity
+            style={styles.analysisBtn}
+            onPress={() => navigation.navigate('DeltaAnalysis', {
+              vehicleId: vehicleId,
+              tireId:    tireId,
+              trackId:   selectedTrackId,
+            })}
+          >
+            <Text style={styles.analysisBtnText}>Cold → hot delta analysis →</Text>
+          </TouchableOpacity>
+        )}
+
+        {trackView === 'single' && selectedTrackId &&
+          settings.pyrometer_gradient &&
+          sessions.some(s => s.tyre_temp_hot_fl_c  != null) && (
+          <TouchableOpacity
+            style={styles.analysisBtn}
+            onPress={() => navigation.navigate('TyreTempAnalysis', {
+              vehicleId: vehicleId,
+              tireId:    tireId,
+              trackId:   selectedTrackId,
+            })}
+          >
+            <Text style={styles.analysisBtnText}>Tire temperature history →</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Session list */}
         <Text style={globalStyles.sectionLabel}>Sessions</Text>
+
+        {/* Session count summary */}
+        {!loading && sessions.length > 0 && (
+          <Text style={[typography.caption, {
+            textAlign: 'center', marginTop: spacing.md, marginBottom: spacing.sm, color: colors.textMuted,
+          }]}>
+            {sessions.length} session{sessions.length !== 1 ? 's' : ''} ·{' '}
+            {personalSessions.length} yours
+            {' · '}{sessions.length - personalSessions.length} community
+          </Text>
+        )}
+
         <View style={styles.filterRow}>
           {FILTERS.map(({ key, label }) => (
             <TouchableOpacity
@@ -676,32 +717,6 @@ export default function HistoryScreen({ navigation, route }: Props) {
             );
           })
         )}
-
-        {/* Delta analysis — single track only */}
-        {trackView === 'single' && selectedTrackId && (
-          <TouchableOpacity
-            style={styles.analysisBtn}
-            onPress={() => navigation.navigate('DeltaAnalysis', {
-              vehicleId: vehicleId,
-              tireId:    tireId,
-              trackId:   selectedTrackId,
-            })}
-          >
-            <Text style={styles.analysisBtnText}>Cold → hot delta analysis →</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Session count summary */}
-        {!loading && sessions.length > 0 && (
-          <Text style={[typography.caption, {
-            textAlign: 'center', marginTop: spacing.md, color: colors.textMuted,
-          }]}>
-            {sessions.length} session{sessions.length !== 1 ? 's' : ''} ·{' '}
-            {personalSessions.length} yours
-            {' · '}{sessions.length - personalSessions.length} community
-          </Text>
-        )}
-
       </ScrollView>
     </SafeAreaView>
   );

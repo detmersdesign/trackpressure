@@ -53,6 +53,14 @@ function coldStoredHint(raw: string): string | null {
   return rounded !== num ? `stores as ${rounded.toFixed(1)}` : null;
 }
 
+function pressureLooksWrong(val: string, unit: 'psi' | 'bar' | 'kpa'): boolean {
+  const n = parseFloat(val);
+  if (isNaN(n) || val.length < 2) return false;
+  if (unit === 'bar') return n < 1.0 || n > 4.1;
+  if (unit === 'kpa')  return n < 100  || n > 414;
+  return n < 15 || n > 60;
+}
+
 export default function QuickLogScreen({ navigation, route }: Props) {
   const { activeEvent, openSession, setActiveTab, setOpenSession, clearOpenSession, setLastEntry, incrementSession } = useEvent();
   const { weather } = useLocationAndWeather();
@@ -76,11 +84,27 @@ export default function QuickLogScreen({ navigation, route }: Props) {
 
   const [savingCold, setSavingCold] = useState(false);
 
+  // Tyre target operating temp fetched from tire_targets — falls back to 60°C
+  const [tyreTempC, setTyreTempC] = useState(60);
+  useEffect(() => {
+    if (!activeEvent?.tire_front?.id) return;
+    supabase
+      .from('tire_targets')
+      .select('target_temp_min_c, target_temp_max_c')
+      .eq('tire_id', activeEvent.tire_front.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.target_temp_min_c != null && data?.target_temp_max_c != null) {
+          setTyreTempC((data.target_temp_min_c + data.target_temp_max_c) / 2);
+        }
+      });
+  }, [activeEvent?.tire_front?.id]);
+
   // ── Hot state ────────────────────────────────────────────
   const seedHotValues = useCallback((): Record<HotCorner, number> => {
     if (openSession) {
-      const ambientF = openSession.ambient_session_start !== undefined
-        ? openSession.ambient_session_start * 9/5 + 32
+      const ambientC = openSession.ambient_session_start !== undefined
+        ? openSession.ambient_session_start
         : undefined;
 
       const coldFL = openSession.cold_fl_psi ?? openSession.cold_front_psi;
@@ -89,10 +113,10 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       const coldRR = openSession.cold_rr_psi ?? openSession.cold_rear_psi;
 
       return {
-        fl: ambientF !== undefined ? predictHotRounded(coldFL, ambientF) : openSession.predicted_hot_fl,
-        fr: ambientF !== undefined ? predictHotRounded(coldFR, ambientF) : openSession.predicted_hot_fr,
-        rl: ambientF !== undefined ? predictHotRounded(coldRL, ambientF) : openSession.predicted_hot_rl,
-        rr: ambientF !== undefined ? predictHotRounded(coldRR, ambientF) : openSession.predicted_hot_rr,
+        fl: ambientC !== undefined ? predictHotRounded(coldFL, ambientC, tyreTempC) : openSession.predicted_hot_fl,
+        fr: ambientC !== undefined ? predictHotRounded(coldFR, ambientC, tyreTempC) : openSession.predicted_hot_fr,
+        rl: ambientC !== undefined ? predictHotRounded(coldRL, ambientC, tyreTempC) : openSession.predicted_hot_rl,
+        rr: ambientC !== undefined ? predictHotRounded(coldRR, ambientC, tyreTempC) : openSession.predicted_hot_rr,
       };
     }
     return { fl: 36.0, fr: 36.0, rl: 33.5, rr: 33.5 };
@@ -161,14 +185,16 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       if (isNaN(fl) || isNaN(fr) || isNaN(rl) || isNaN(rr)) return null;
       const avgF = (inputToPsi(roundHalf(fl)) + inputToPsi(roundHalf(fr))) / 2;
       const avgR = (inputToPsi(roundHalf(rl)) + inputToPsi(roundHalf(rr))) / 2;
-      return { front: predictHotRounded(avgF), rear: predictHotRounded(avgR) };
+      const startC = ambientTempC ?? 20;
+      return { front: predictHotRounded(avgF, startC, tyreTempC), rear: predictHotRounded(avgR, startC, tyreTempC) };
     }
     const cf = parseFloat(coldValues.cf);
     const cr = parseFloat(coldValues.cr);
     if (isNaN(cf) || isNaN(cr)) return null;
+    const startC = ambientTempC ?? 20;
     return {
-      front: predictHotRounded(inputToPsi(roundHalf(cf))),
-      rear:  predictHotRounded(inputToPsi(roundHalf(cr))),
+      front: predictHotRounded(inputToPsi(roundHalf(cf)), startC, tyreTempC),
+      rear:  predictHotRounded(inputToPsi(roundHalf(cr)), startC, tyreTempC),
     };
   }
 
@@ -236,10 +262,10 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       cold_fr_psi:       coldFR,
       cold_rl_psi:       coldRL,
       cold_rr_psi:       coldRR,
-      predicted_hot_fl:  predictHotRounded(coldFL ?? coldF),
-      predicted_hot_fr:  predictHotRounded(coldFR ?? coldF),
-      predicted_hot_rl:  predictHotRounded(coldRL ?? coldR),
-      predicted_hot_rr:  predictHotRounded(coldRR ?? coldR),
+      predicted_hot_fl:  predictHotRounded(coldFL ?? coldF, ambientTempC ?? 20, tyreTempC),
+      predicted_hot_fr:  predictHotRounded(coldFR ?? coldF, ambientTempC ?? 20, tyreTempC),
+      predicted_hot_rl:  predictHotRounded(coldRL ?? coldR, ambientTempC ?? 20, tyreTempC),
+      predicted_hot_rr:  predictHotRounded(coldRR ?? coldR, ambientTempC ?? 20, tyreTempC),
       saved_at:          new Date().toISOString(),
       ambient_temp_c:    ambientTempC ?? undefined,
       ambient_source:    ambientTempC != null ? 'auto' : undefined,
@@ -455,11 +481,23 @@ export default function QuickLogScreen({ navigation, route }: Props) {
                       <Text style={[styles.coldCornerLabel, isActive && styles.coldCornerLabelActive]}>
                         {COLD_CORNER_LABELS[corner]}
                       </Text>
-                      <Text style={[styles.coldCornerVal, isActive && styles.coldCornerValActive]}>
+                      <Text style={[
+                        styles.coldCornerVal,
+                        { color: pressureLooksWrong(val, settings.pressure_unit)
+                            ? colors.danger
+                            : isActive
+                              ? colors.accent
+                              : val.length > 0
+                                ? colors.success
+                                : colors.textMuted },
+                      ]}>
                         {val.length > 0 ? val : '—'}
                       </Text>
-                      <Text style={styles.coldCornerSub}>
-                        {val.length > 0 ? pressureUnit() : 'tap to enter'}
+                      <Text style={[
+                        styles.coldCornerSub,
+                        pressureLooksWrong(val, settings.pressure_unit) && { color: colors.danger },
+                      ]}>
+                        {pressureLooksWrong(val, settings.pressure_unit) ? '⚠ check' : val.length > 0 ? pressureUnit() : 'tap to enter'}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -480,20 +518,43 @@ export default function QuickLogScreen({ navigation, route }: Props) {
                   <View style={styles.axleArrowLine} />
                 </View>
                 <View style={styles.axleBoxes}>
-                  <PressureBox
-                    label="Front axle"
-                    sublabel={coldStoredHint(coldValues.cf) ?? 'both sides'}
-                    value={coldValues.cf}
-                    active={activeColdField === 'cf'}
-                    onPress={() => setActiveColdField('cf')}
-                  />
-                  <PressureBox
-                    label="Rear axle"
-                    sublabel={coldStoredHint(coldValues.cr) ?? 'both sides'}
-                    value={coldValues.cr}
-                    active={activeColdField === 'cr'}
-                    onPress={() => setActiveColdField('cr')}
-                  />
+                  {(['cf', 'cr'] as const).map(field => {
+                    const val    = coldValues[field];
+                    const isActive = activeColdField === field;
+                    const warn   = pressureLooksWrong(val, settings.pressure_unit);
+                    const label  = field === 'cf' ? 'Front axle' : 'Rear axle';
+                    const sub    = warn ? '⚠ check value' : coldStoredHint(val) ?? 'both sides';
+                    return (
+                      <TouchableOpacity
+                        key={field}
+                        style={[styles.coldCornerBox, isActive && styles.coldCornerBoxActive]}
+                        onPress={() => setActiveColdField(field)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.coldCornerLabel, isActive && styles.coldCornerLabelActive]}>
+                          {label}
+                        </Text>
+                        <Text style={[
+                          styles.coldCornerVal,
+                          { color: warn
+                              ? colors.danger
+                              : isActive
+                                ? colors.accent
+                                : val.length > 0
+                                  ? colors.success
+                                  : colors.textMuted },
+                        ]}>
+                          {val.length > 0 ? val : '—'}
+                        </Text>
+                        <Text style={[
+                          styles.coldCornerSub,
+                          warn && { color: colors.danger },
+                        ]}>
+                          {sub}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
 
@@ -514,7 +575,7 @@ export default function QuickLogScreen({ navigation, route }: Props) {
           {pred && (
             <View style={styles.predRow}>
               <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                Predicted hot at session temp:
+                Predicted hot based on ambient {ambientTempC != null ? `${displayTemp(ambientTempC)}${tempUnit()}` : `20${tempUnit()} (default)`}:
               </Text>
               <Text style={[typography.caption, { color: colors.warning, fontWeight: '600' }]}>
                 {' '}F {displayPressure(pred.front)} · R {displayPressure(pred.rear)} {pressureUnit()} per corner
