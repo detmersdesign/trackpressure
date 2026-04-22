@@ -23,6 +23,14 @@ interface Session {
   session_type: string;
   cold_front_psi: number;
   cold_rear_psi: number;
+  cold_fl_psi: number | null;
+  cold_fr_psi: number | null;
+  cold_rl_psi: number | null;
+  cold_rr_psi: number | null;
+  cold_fl_temp_c: number | null;
+  cold_fr_temp_c: number | null;
+  cold_rl_temp_c: number | null;
+  cold_rr_temp_c: number | null;
   hot_front_psi: number | null;
   hot_rear_psi: number | null;
   hot_fl_psi: number | null;
@@ -37,6 +45,19 @@ interface Session {
   tyre_temp_hot_fr_c: number | null;
   tyre_temp_hot_rl_c: number | null;
   tyre_temp_hot_rr_c: number | null;
+  tyre_temp_hot_fl_inner_c: number | null;
+  tyre_temp_hot_fl_mid_c:   number | null;
+  tyre_temp_hot_fl_outer_c: number | null;
+  tyre_temp_hot_fr_inner_c: number | null;
+  tyre_temp_hot_fr_mid_c:   number | null;
+  tyre_temp_hot_fr_outer_c: number | null;
+  tyre_temp_hot_rl_inner_c: number | null;
+  tyre_temp_hot_rl_mid_c:   number | null;
+  tyre_temp_hot_rl_outer_c: number | null;
+  tyre_temp_hot_rr_inner_c: number | null;
+  tyre_temp_hot_rr_mid_c:   number | null;
+  tyre_temp_hot_rr_outer_c: number | null;
+  notes: string | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -180,11 +201,18 @@ export default function HistoryScreen({ navigation, route }: Props) {
         .select(`
           id, created_at, ambient_temp_c, session_type,
           cold_front_psi, cold_rear_psi,
+          cold_fl_psi, cold_fr_psi, cold_rl_psi, cold_rr_psi,
+          tyre_temp_cold_fl_c, tyre_temp_cold_fr_c,
+          tyre_temp_cold_rl_c, tyre_temp_cold_rr_c,
           hot_front_psi, hot_rear_psi,
           hot_fl_psi, hot_fr_psi, hot_rl_psi, hot_rr_psi,
           tyre_temp_hot_fl_c, tyre_temp_hot_fr_c,
           tyre_temp_hot_rl_c, tyre_temp_hot_rr_c,
-          signal_score, user_id, track_id,
+          tyre_temp_hot_fl_inner_c, tyre_temp_hot_fl_mid_c, tyre_temp_hot_fl_outer_c,
+          tyre_temp_hot_fr_inner_c, tyre_temp_hot_fr_mid_c, tyre_temp_hot_fr_outer_c,
+          tyre_temp_hot_rl_inner_c, tyre_temp_hot_rl_mid_c, tyre_temp_hot_rl_outer_c,
+          tyre_temp_hot_rr_inner_c, tyre_temp_hot_rr_mid_c, tyre_temp_hot_rr_outer_c,
+          notes, signal_score, user_id, track_id,
           tracks (name)
         `)
         .eq('vehicle_id', vehicleId)
@@ -202,7 +230,11 @@ export default function HistoryScreen({ navigation, route }: Props) {
       if (!error && data) {
         const mapped = (data as any[]).map(s => ({
           ...s,
-          track_name: s.tracks?.name ?? null,
+          track_name:    s.tracks?.name ?? null,
+          cold_fl_temp_c: s.tyre_temp_cold_fl_c ?? null,
+          cold_fr_temp_c: s.tyre_temp_cold_fr_c ?? null,
+          cold_rl_temp_c: s.tyre_temp_cold_rl_c ?? null,
+          cold_rr_temp_c: s.tyre_temp_cold_rr_c ?? null,
         }));
         setSessions(mapped as Session[]);
       }
@@ -674,7 +706,56 @@ export default function HistoryScreen({ navigation, route }: Props) {
               <TouchableOpacity
                 key={session.id}
                 style={styles.sessionRow}
-                onPress={() => navigation.navigate('DeltaAnalysis')}
+                onPress={() => {
+                  const activeEvent_ = route?.params;
+                  navigation.navigate('SessionDetail', {
+                    id:            session.id,
+                    created_at:    session.created_at,
+                    session_type:  session.session_type,
+                    ambient_temp_c: session.ambient_temp_c,
+                    track_name:    session.track_name ?? '',
+                    track_config:  null,
+                    vehicle_label: vehicleLabel,
+                    tire_label:    tireLabel,
+                    cold_front_psi: session.cold_front_psi,
+                    cold_rear_psi:  session.cold_rear_psi,
+                    hot_front_psi:  session.hot_front_psi,
+                    hot_rear_psi:   session.hot_rear_psi,
+                    cold_fl_psi:   session.cold_fl_psi,
+                    cold_fr_psi:   session.cold_fr_psi,
+                    cold_rl_psi:   session.cold_rl_psi,
+                    cold_rr_psi:   session.cold_rr_psi,
+                    cold_fl_temp_c: session.cold_fl_temp_c,
+                    cold_fr_temp_c: session.cold_fr_temp_c,
+                    cold_rl_temp_c: session.cold_rl_temp_c,
+                    cold_rr_temp_c: session.cold_rr_temp_c,
+                    hot_fl_psi:    session.hot_fl_psi,
+                    hot_fr_psi:    session.hot_fr_psi,
+                    hot_rl_psi:    session.hot_rl_psi,
+                    hot_rr_psi:    session.hot_rr_psi,
+                    tyre_temp_hot_fl_c: session.tyre_temp_hot_fl_c,
+                    tyre_temp_hot_fr_c: session.tyre_temp_hot_fr_c,
+                    tyre_temp_hot_rl_c: session.tyre_temp_hot_rl_c,
+                    tyre_temp_hot_rr_c: session.tyre_temp_hot_rr_c,
+                    tyre_temp_hot_fl_inner_c: session.tyre_temp_hot_fl_inner_c,
+                    tyre_temp_hot_fl_mid_c:   session.tyre_temp_hot_fl_mid_c,
+                    tyre_temp_hot_fl_outer_c: session.tyre_temp_hot_fl_outer_c,
+                    tyre_temp_hot_fr_inner_c: session.tyre_temp_hot_fr_inner_c,
+                    tyre_temp_hot_fr_mid_c:   session.tyre_temp_hot_fr_mid_c,
+                    tyre_temp_hot_fr_outer_c: session.tyre_temp_hot_fr_outer_c,
+                    tyre_temp_hot_rl_inner_c: session.tyre_temp_hot_rl_inner_c,
+                    tyre_temp_hot_rl_mid_c:   session.tyre_temp_hot_rl_mid_c,
+                    tyre_temp_hot_rl_outer_c: session.tyre_temp_hot_rl_outer_c,
+                    tyre_temp_hot_rr_inner_c: session.tyre_temp_hot_rr_inner_c,
+                    tyre_temp_hot_rr_mid_c:   session.tyre_temp_hot_rr_mid_c,
+                    tyre_temp_hot_rr_outer_c: session.tyre_temp_hot_rr_outer_c,
+                    target_min_psi: null,
+                    target_max_psi: null,
+                    notes: session.notes,
+                    user_id: session.user_id,
+                    currentUserId: currentUserId ?? null,
+                  });
+                }}
                 activeOpacity={0.7}
               >
                 <View style={[styles.sessionDot, rowDotStyle]} />

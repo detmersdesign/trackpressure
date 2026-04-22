@@ -82,8 +82,10 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
 
   // Cold: all pressures required, temps optional
   const coldModeReady = CORNERS.every(c => pressures[c].length > 0);
-  // Hot: all pressures AND temps required
-  const hotModeReady  = CORNERS.every(c => pressures[c].length > 0 && temps[c].length > 0);
+  // Hot: all pressures required, temps optional (only required if any temp was entered)
+  const anyTemps      = CORNERS.some(c => temps[c].length > 0);
+  const hotModeReady  = CORNERS.every(c => pressures[c].length > 0) &&
+                        (!anyTemps || CORNERS.every(c => temps[c].length > 0));
   const canSubmit     = mode === 'cold' ? coldModeReady : hotModeReady;
 
   // ── Numpad ────────────────────────────────────────────────────────────────
@@ -229,28 +231,55 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
       created_at: openSession.historic_date ?? new Date().toISOString(),
     };
 
+    const entryId = uuidv4();
     try {
-      await supabase.from('pressure_entries').insert(entry);
+      await supabase
+        .from('pressure_entries')
+        .insert({ ...entry, id: entryId });
     } catch {}
 
     setLastEntry(entry);
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
-    if (openSession.historic_date) {
-      navigation.replace('HistoricEventSetup', {
-        vehicle:        activeEvent.vehicle,
-        tireFront:      activeEvent.tire_front,
-        tireRear:       activeEvent.tire_rear,
-        tireSetName:    activeEvent.tire_set_name ?? '',
-        selectedTrack:  activeEvent.track,
-        selectedConfig: activeEvent.track_config ?? null,
-        sessionType:    activeEvent.session_type,
-        prefilled:      true,
-      });
-    } else {
-      navigation.navigate('Confirmation');
-    }
+
+    const historicEvent = openSession.historic_date ? {
+      vehicle:        activeEvent.vehicle,
+      tireFront:      activeEvent.tire_front,
+      tireRear:       activeEvent.tire_rear,
+      tireSetName:    activeEvent.tire_set_name ?? '',
+      selectedTrack:  activeEvent.track,
+      selectedConfig: activeEvent.track_config ?? null,
+      sessionType:    activeEvent.session_type,
+      prefilled:      true,
+    } : null;
+
+    const tireLabel = activeEvent.tire_front.brand + ' ' + activeEvent.tire_front.model;
+    const trackConfig = activeEvent.track_config?.name ?? activeEvent.track.name;
+
+    navigation.navigate('SessionNotes', {
+      entryId:      entryId ?? '',
+      mode:         temps.fl || temps.fr || temps.rl || temps.rr ? 'pyrometer' : 'pressures',
+      trackConfig,
+      tireLabel,
+      sessionType:  activeEvent.session_type,
+      hotFL:        roundHalf(inputToPsi(parseFloat(pressures.fl))),
+      hotFR:        roundHalf(inputToPsi(parseFloat(pressures.fr))),
+      hotRL:        roundHalf(inputToPsi(parseFloat(pressures.rl))),
+      hotRR:        roundHalf(inputToPsi(parseFloat(pressures.rr))),
+      tempFL:       temps.fl ? parseFloat(temps.fl) : null,
+      tempFR:       temps.fr ? parseFloat(temps.fr) : null,
+      tempRL:       temps.rl ? parseFloat(temps.rl) : null,
+      tempRR:       temps.rr ? parseFloat(temps.rr) : null,
+      flInner: null, flMid: null, flOuter: null,
+      frInner: null, frMid: null, frOuter: null,
+      rlInner: null, rlMid: null, rlOuter: null,
+      rrInner: null, rrMid: null, rrOuter: null,
+      targetMin:    null,
+      targetMax:    null,
+      historicDate: openSession.historic_date ?? null,
+      historicEvent,
+    });
   }
 
   function handleSubmit() {

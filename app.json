@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrackPressures",
     "slug": "trackpressure",
-    "version": "1.2.7",
+    "version": "1.2.9",
     "scheme": "trackpressure",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -18,7 +18,10 @@
       "bundleIdentifier": "com.detmersdesign.trackpressure",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "TrackPressures uses your location to detect nearby tracks and fetch current weather conditions.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Used to set a custom photo for your car in the garage.",
+        "NSCameraUsageDescription": "Used to take a photo of your car for the garage."
+
       }
     },
     "android": {
@@ -31,7 +34,9 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "READ_MEDIA_IMAGES",
+        "CAMERA"
       ]
     },
     "plugins": [

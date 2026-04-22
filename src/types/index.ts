@@ -11,6 +11,8 @@ export interface GarageVehicle {
   created_at: string;
   vehicle?: Vehicle;
   tire_sets?: GarageTireSet[];
+  custom_silhouette_url?: string | null;
+  custom_silhouette_updated_at?: string | null;
 }
 
 export interface GarageTireSet {
@@ -49,7 +51,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   distance_unit:           'mi',
   hot_pressures_visible:   true,
   community_contributions: true,
-  four_corner_cold:        false,
+  four_corner_cold:        true,
   pyrometer_enabled:       false,
   pyrometer_gradient:      false,
 };

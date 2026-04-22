@@ -342,30 +342,53 @@ export default function QuickLogScreen({ navigation, route }: Props) {
 
     const signalScore = computeSignalScore(entry, activeEvent.tire_front.id);
 
+    // Capture context before clearing
+    const historicDate  = openSession.historic_date ?? null;
+    const historicEvent = historicDate ? {
+      vehicle:        activeEvent.vehicle,
+      tireFront:      activeEvent.tire_front,
+      tireRear:       activeEvent.tire_rear,
+      tireSetName:    activeEvent.tire_set_name ?? '',
+      selectedTrack:  activeEvent.track,
+      selectedConfig: activeEvent.track_config ?? null,
+      sessionType:    activeEvent.session_type,
+      prefilled:      true,
+    } : null;
+    const tireLabel   = activeEvent.tire_front.brand + ' ' + activeEvent.tire_front.model;
+    const trackConfig = activeEvent.track_config?.name ?? activeEvent.track.name;
+
+    const entryId = uuidv4();
     try {
       await supabase
         .from('pressure_entries')
-        .insert({ ...entry, signal_score: signalScore, created_at: openSession.historic_date ?? new Date().toISOString() });
+        .insert({ ...entry, id: entryId, signal_score: signalScore, created_at: historicDate ?? new Date().toISOString() });
     } catch {}
 
     setLastEntry(entry);
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
-    if (openSession.historic_date) {
-      navigation.replace('HistoricEventSetup', {
-        vehicle:        activeEvent.vehicle,
-        tireFront:      activeEvent.tire_front,
-        tireRear:       activeEvent.tire_rear,
-        tireSetName:    activeEvent.tire_set_name ?? '',
-        selectedTrack:  activeEvent.track,
-        selectedConfig: activeEvent.track_config ?? null,
-        sessionType:    activeEvent.session_type,
-        prefilled:      true,
-      });
-    } else {
-      navigation.navigate('Confirmation');
-    }
+
+    navigation.navigate('SessionNotes', {
+      entryId,
+      mode:        'pressures',
+      trackConfig,
+      tireLabel,
+      sessionType: activeEvent.session_type,
+      hotFL:       hotValues.fl,
+      hotFR:       hotValues.fr,
+      hotRL:       hotValues.rl,
+      hotRR:       hotValues.rr,
+      tempFL: null, tempFR: null, tempRL: null, tempRR: null,
+      flInner: null, flMid: null, flOuter: null,
+      frInner: null, frMid: null, frOuter: null,
+      rlInner: null, rlMid: null, rlOuter: null,
+      rrInner: null, rrMid: null, rrOuter: null,
+      targetMin:    null,
+      targetMax:    null,
+      historicDate,
+      historicEvent,
+    });
   }
 
   async function handleSkipHot() {
@@ -395,30 +418,50 @@ export default function QuickLogScreen({ navigation, route }: Props) {
 
     const signalScore = computeSignalScore(entry, activeEvent.tire_front.id);
 
+    // Capture context before clearing
+    const historicDateSkip  = openSession.historic_date ?? null;
+    const historicEventSkip = historicDateSkip ? {
+      vehicle:        activeEvent.vehicle,
+      tireFront:      activeEvent.tire_front,
+      tireRear:       activeEvent.tire_rear,
+      tireSetName:    activeEvent.tire_set_name ?? '',
+      selectedTrack:  activeEvent.track,
+      selectedConfig: activeEvent.track_config ?? null,
+      sessionType:    activeEvent.session_type,
+      prefilled:      true,
+    } : null;
+    const tileLabelSkip   = activeEvent.tire_front.brand + ' ' + activeEvent.tire_front.model;
+    const trackConfigSkip = activeEvent.track_config?.name ?? activeEvent.track.name;
+
+    const entryIdSkip = uuidv4();
     try {
       await supabase
         .from('pressure_entries')
-        .insert({ ...entry, signal_score: signalScore });
+        .insert({ ...entry, id: entryIdSkip, signal_score: signalScore });
     } catch {}
 
     setLastEntry(entry);
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
-    if (openSession.historic_date) {
-      navigation.replace('HistoricEventSetup', {
-        vehicle:        activeEvent.vehicle,
-        tireFront:      activeEvent.tire_front,
-        tireRear:       activeEvent.tire_rear,
-        tireSetName:    activeEvent.tire_set_name ?? '',
-        selectedTrack:  activeEvent.track,
-        selectedConfig: activeEvent.track_config ?? null,
-        sessionType:    activeEvent.session_type,
-        prefilled:      true,
-      });
-    } else {
-      navigation.navigate('Confirmation');
-    }
+
+    navigation.navigate('SessionNotes', {
+      entryId:     entryIdSkip,
+      mode:        'pressures',
+      trackConfig: trackConfigSkip,
+      tireLabel:   tileLabelSkip,
+      sessionType: activeEvent.session_type,
+      hotFL: null, hotFR: null, hotRL: null, hotRR: null,
+      tempFL: null, tempFR: null, tempRL: null, tempRR: null,
+      flInner: null, flMid: null, flOuter: null,
+      frInner: null, frMid: null, frOuter: null,
+      rlInner: null, rlMid: null, rlOuter: null,
+      rrInner: null, rrMid: null, rrOuter: null,
+      targetMin:    null,
+      targetMax:    null,
+      historicDate:  historicDateSkip,
+      historicEvent: historicEventSkip,
+    });
   }
 
   const dF = coldDeltaPsi('front');

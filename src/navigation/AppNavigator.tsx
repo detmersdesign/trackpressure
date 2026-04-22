@@ -23,6 +23,9 @@ import HotGradientEntryScreen   from '../screens/HotGradientEntryScreen';
 import CornerReviewScreen       from '../screens/CornerReviewScreen';
 import FeedbackScreen           from '../screens/FeedbackScreen';
 import HistoricEventSetupScreen from '../screens/HistoricEventSetupScreen';
+import EditSilhouetteScreen     from '../screens/EditSilhouetteScreen';
+import SessionNotesScreen       from '../screens/SessionNotesScreen';
+import SessionDetailScreen      from '../screens/SessionDetailScreen';
 
 // ── Stack navigators ──────────────────────────────────────────────────────────
 
@@ -41,6 +44,8 @@ function LogStackNav() {
       <LogStack.Screen name="Confirmation"       component={ConfirmationScreen} />
       <LogStack.Screen name="Garage"             component={GarageScreen} />
       <LogStack.Screen name="Feedback"           component={FeedbackScreen} />
+      <LogStack.Screen name="SessionNotes"      component={SessionNotesScreen} />
+      <LogStack.Screen name="SessionDetail"     component={SessionDetailScreen} />
     </LogStack.Navigator>
   );
 }
@@ -60,6 +65,8 @@ function HistoryStackNav() {
       <HistoryStack.Screen name="ColdSaved"         component={ColdSavedScreen} />
       <HistoryStack.Screen name="Confirmation"      component={ConfirmationScreen} />
       <HistoryStack.Screen name="Feedback"          component={FeedbackScreen} />
+      <HistoryStack.Screen name="SessionNotes"     component={SessionNotesScreen} />
+      <HistoryStack.Screen name="SessionDetail"    component={SessionDetailScreen} />
     </HistoryStack.Navigator>
   );
 }
@@ -71,6 +78,7 @@ function GarageStackNav() {
       <GarageStack.Screen name="Garage"              component={GarageScreen} />
       <GarageStack.Screen name="Settings"            component={SettingsScreen} />
       <GarageStack.Screen name="EditGarageVehicle"   component={EditGarageVehicleScreen} />
+      <GarageStack.Screen name="EditSilhouette"      component={EditSilhouetteScreen} />
       <GarageStack.Screen name="EventSetup"          component={EventSetupScreen} />
       <GarageStack.Screen name="HistoricEventSetup"  component={HistoricEventSetupScreen} />
       <GarageStack.Screen name="Feedback"            component={FeedbackScreen} />
@@ -81,6 +89,8 @@ function GarageStackNav() {
       <GarageStack.Screen name="CornerReview"        component={CornerReviewScreen} />
       <GarageStack.Screen name="ColdSaved"           component={ColdSavedScreen} />
       <GarageStack.Screen name="Confirmation"        component={ConfirmationScreen} />
+      <GarageStack.Screen name="SessionNotes"      component={SessionNotesScreen} />
+      <GarageStack.Screen name="SessionDetail"     component={SessionDetailScreen} />
     </GarageStack.Navigator>
   );
 }

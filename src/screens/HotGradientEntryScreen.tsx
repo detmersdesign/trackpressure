@@ -11,6 +11,7 @@ import { useEvent } from '../hooks/useEventContext';
 import { useSettings } from '../hooks/useSettings';
 import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
 import { supabase } from '../lib/supabase';
+import { v4 as uuidv4 } from 'uuid';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -252,28 +253,65 @@ export default function HotGradientEntryScreen({ navigation }: Props) {
       created_at: openSession.historic_date ?? new Date().toISOString(),
     };
 
+    const entryId = uuidv4();
     try {
-      await supabase.from('pressure_entries').insert(entry);
+      await supabase
+        .from('pressure_entries')
+        .insert({ ...entry, id: entryId });
     } catch {}
 
     setLastEntry(entry);
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
-    if (openSession.historic_date) {
-      navigation.replace('HistoricEventSetup', {
-        vehicle:        activeEvent.vehicle,
-        tireFront:      activeEvent.tire_front,
-        tireRear:       activeEvent.tire_rear,
-        tireSetName:    activeEvent.tire_set_name ?? '',
-        selectedTrack:  activeEvent.track,
-        selectedConfig: activeEvent.track_config ?? null,
-        sessionType:    activeEvent.session_type,
-        prefilled:      true,
-      });
-    } else {
-      navigation.navigate('Confirmation');
-    }
+
+    const historicEvent = openSession.historic_date ? {
+      vehicle:        activeEvent.vehicle,
+      tireFront:      activeEvent.tire_front,
+      tireRear:       activeEvent.tire_rear,
+      tireSetName:    activeEvent.tire_set_name ?? '',
+      selectedTrack:  activeEvent.track,
+      selectedConfig: activeEvent.track_config ?? null,
+      sessionType:    activeEvent.session_type,
+      prefilled:      true,
+    } : null;
+
+    const tireLabel   = activeEvent.tire_front.brand + ' ' + activeEvent.tire_front.model;
+    const trackConfig = activeEvent.track_config?.name ?? activeEvent.track.name;
+    const isGradient  = settings.pyrometer_gradient;
+
+    // corner values are already in user display units — pass directly, no conversion needed
+    navigation.navigate('SessionNotes', {
+      entryId:     entryId ?? '',
+      mode:        isGradient ? 'gradient' : 'pyrometer',
+      trackConfig,
+      tireLabel,
+      sessionType: activeEvent.session_type,
+      hotFL:       hotFL,
+      hotFR:       hotFR,
+      hotRL:       hotRL,
+      hotRR:       hotRR,
+      tempFL:      corners.fl.mid   ?? null,
+      tempFR:      corners.fr.mid   ?? null,
+      tempRL:      corners.rl.mid   ?? null,
+      tempRR:      corners.rr.mid   ?? null,
+      flInner:     corners.fl.inner ?? null,
+      flMid:       corners.fl.mid   ?? null,
+      flOuter:     corners.fl.outer ?? null,
+      frInner:     corners.fr.inner ?? null,
+      frMid:       corners.fr.mid   ?? null,
+      frOuter:     corners.fr.outer ?? null,
+      rlInner:     corners.rl.inner ?? null,
+      rlMid:       corners.rl.mid   ?? null,
+      rlOuter:     corners.rl.outer ?? null,
+      rrInner:     corners.rr.inner ?? null,
+      rrMid:       corners.rr.mid   ?? null,
+      rrOuter:     corners.rr.outer ?? null,
+      targetMin:   null,
+      targetMax:   null,
+      historicDate:  openSession.historic_date ?? null,
+      historicEvent,
+    });
   }
 
   // ── Gradient bar colours ──────────────────────────────────────────────────

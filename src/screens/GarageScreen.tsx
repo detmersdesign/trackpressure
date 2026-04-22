@@ -12,6 +12,7 @@ import { useSettings } from '../hooks/useSettings';
 import { supabase } from '../lib/supabase';
 import { GarageVehicle, GarageTireSet, Tire, Vehicle } from '../types';
 import { VehicleSilhouette } from '../components/VehicleSilhouette';
+import { useGarageVehicleImage } from '../hooks/useGarageVehicleImage';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -19,6 +20,41 @@ type Props = {
   navigation: NativeStackNavigationProp<any>;
   route?: { params?: { focusCardIndex?: number; openTyreDropdown?: boolean } };
 };
+
+// ── Silhouette banner with edit badge ────────────────────────────────────────
+// Separate component so useGarageVehicleImage hook is called at component level
+function SilhouetteBanner({
+  garageVehicle, vehicle, onEdit,
+}: {
+  garageVehicle: import('../types').GarageVehicle;
+  vehicle: import('../types').Vehicle | undefined;
+  onEdit: () => void;
+}) {
+  const { localUri } = useGarageVehicleImage(garageVehicle);
+  return (
+    <View style={{ position: 'relative' }}>
+      <VehicleSilhouette
+        vehicleId={vehicle?.id}
+        category={vehicle?.silhouette_category}
+        userImageUri={localUri ?? undefined}
+      />
+      <TouchableOpacity style={silhouetteStyles.badge} onPress={onEdit}>
+        <Text style={silhouetteStyles.icon}>✎</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const silhouetteStyles = StyleSheet.create({
+  badge: {
+    position: 'absolute', top: 8, left: 8,
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderWidth: 0.5, borderColor: '#3A3A3A',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  icon: { fontSize: 14, color: '#F0EDE8' },
+});
 
 export default function GarageScreen({ navigation, route }: Props) {
   const { setActiveEvent, activeEvent, setActiveTab, prefetchLocation } = useEvent();
@@ -55,6 +91,7 @@ export default function GarageScreen({ navigation, route }: Props) {
         .from('garage_vehicles')
         .select(`
           id, user_id, vehicle_id, nickname, notes, user_year, display_order, created_at,
+          custom_silhouette_url, custom_silhouette_updated_at,
           garage_tire_sets (
             id, garage_vehicle_id, name,
             tire_front_id, tire_rear_id,
@@ -252,8 +289,17 @@ export default function GarageScreen({ navigation, route }: Props) {
             </>
           ) : null}
 
-          {/* Actions */}
-          <VehicleSilhouette category={vehicle?.silhouette_category} height={150} />
+          {/* Silhouette with edit badge */}
+          <SilhouetteBanner
+            garageVehicle={gv}
+            vehicle={vehicle}
+            onEdit={() => navigation.navigate('EditSilhouette', {
+              garageVehicleId:  gv.id,
+              vehicleLabel:     gv.nickname ?? (vehicle ? `${vehicle.make} ${vehicle.model}` : 'Vehicle'),
+              currentUrl:       gv.custom_silhouette_url ?? null,
+              currentTimestamp: gv.custom_silhouette_updated_at ?? null,
+            })}
+          />
 
           <TouchableOpacity
             style={styles.startBtn}
