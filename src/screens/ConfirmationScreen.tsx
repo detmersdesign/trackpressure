@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet,
+  StyleSheet, TextInput, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,12 +14,27 @@ import { supabase } from '../lib/supabase';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
+const MAX_NOTES = 280;
+
 export default function ConfirmationScreen({ navigation }: Props) {
   const { activeEvent, lastEntry, sessionCount, setActiveTab } = useEvent();
   const { displayPressure, pressureUnit, displayTemp, tempUnit, settings } = useSettings();
   //console.log('pressure unit:', pressureUnit());
   const [target, setTarget]       = useState<any>(null);
   const [commSessions, setCommSessions] = useState<any[]>([]);
+
+  // ── Inline notes state ────────────────────────────────────────────────────
+  const [notes,        setNotes]        = useState<string>('');
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [savingNotes,  setSavingNotes]  = useState(false);
+  const notesInputRef  = useRef<TextInput>(null);
+  const scrollRef      = useRef<ScrollView>(null);
+  const notesViewRef   = useRef<View>(null);
+
+  // Sync notes from lastEntry once it is available (it may arrive after mount)
+  useEffect(() => {
+    setNotes(lastEntry?.notes ?? '');
+  }, [lastEntry?.notes]);
 
   const vehicle = activeEvent?.vehicle;
   const tireId  = activeEvent?.tire_front.id ?? '';
@@ -169,9 +184,38 @@ export default function ConfirmationScreen({ navigation }: Props) {
 
   const insight = generateInsight();
 
+  // ── Notes save ────────────────────────────────────────────────────────────
+  async function handleSaveNotes() {
+    // lastEntry may store the row ID as 'id' or 'entryId' depending on which
+    // screen built the object — check both to be safe.
+    const entryId = lastEntry?.id ?? lastEntry?.entryId;
+    if (!entryId) {
+      console.warn('ConfirmationScreen: lastEntry has no id/entryId', lastEntry);
+      return;
+    }
+    setSavingNotes(true);
+    try {
+      await supabase
+        .from('pressure_entries')
+        .update({ notes: notes.trim() || null })
+        .eq('id', entryId);
+      setEditingNotes(false);
+    } catch {
+      Alert.alert('Error', 'Could not save notes. Please try again.');
+    }
+    setSavingNotes(false);
+  }
+
   return (
     <SafeAreaView style={globalStyles.screen}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        style={{ flex: 1 }}
+      >
+      <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}>
 
         {/* Check row */}
         <View style={styles.checkRow}>
@@ -425,6 +469,84 @@ export default function ConfirmationScreen({ navigation }: Props) {
           </View>
         )}
 
+        {/* Driver notes */}
+        {lastEntry && (
+          <View
+            ref={notesViewRef}
+            onLayout={() => {
+              if (editingNotes) {
+                notesViewRef.current?.measureLayout(
+                  scrollRef.current as any,
+                  (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                  () => {}
+                );
+              }
+            }}
+          >
+            <Text style={globalStyles.sectionLabel}>Driver notes</Text>
+            {editingNotes ? (
+              <>
+                <TextInput
+                  ref={notesInputRef}
+                  style={styles.notesInput}
+                  multiline
+                  maxLength={MAX_NOTES}
+                  value={notes}
+                  onChangeText={setNotes}
+                  textAlignVertical="top"
+                  autoFocus
+                  placeholder="What did you notice? Setup feel, track conditions…"
+                  placeholderTextColor={colors.textMuted}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      notesViewRef.current?.measureLayout(
+                        scrollRef.current as any,
+                        (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                        () => {}
+                      );
+                    }, 150);
+                  }}
+                />
+                <View style={styles.notesBtnRow}>
+                  <TouchableOpacity
+                    style={styles.cancelNotesBtn}
+                    onPress={() => { setNotes(lastEntry?.notes ?? ''); setEditingNotes(false); }}
+                  >
+                    <Text style={styles.cancelNotesBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.saveNotesBtn}
+                    onPress={handleSaveNotes}
+                    disabled={savingNotes}
+                  >
+                    <Text style={styles.saveNotesBtnText}>
+                      {savingNotes ? 'Saving…' : 'Save notes'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.charCount}>{notes.length} / {MAX_NOTES}</Text>
+              </>
+            ) : (
+              <>
+                <View style={styles.notesBubble}>
+                  {notes.trim().length > 0
+                    ? <Text style={styles.notesText}>{notes}</Text>
+                    : <Text style={styles.notesEmpty}>No notes for this session.</Text>
+                  }
+                </View>
+                <TouchableOpacity
+                  style={styles.editNotesBtn}
+                  onPress={() => { setEditingNotes(true); setTimeout(() => notesInputRef.current?.focus(), 100); }}
+                >
+                  <Text style={styles.editNotesBtnText}>
+                    {notes.trim().length > 0 ? 'Edit notes' : 'Add notes'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
         {/* Actions */}
         <View style={styles.actionRow}>
           <TouchableOpacity
@@ -445,6 +567,7 @@ export default function ConfirmationScreen({ navigation }: Props) {
         </View>
 
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -548,6 +671,39 @@ const styles = StyleSheet.create({
     padding: spacing.md, marginTop: spacing.lg,
   },
   insightText: { fontSize: 13, color: colors.textPrimary, lineHeight: 20 },
+
+  // Notes
+  notesBubble: {
+    backgroundColor: colors.bgCard, borderWidth: 0.5,
+    borderColor: colors.border, borderRadius: radius.lg,
+    padding: spacing.md, minHeight: 60,
+  },
+  notesText:  { fontSize: 13, color: colors.textPrimary, lineHeight: 20 },
+  notesEmpty: { fontSize: 13, color: colors.textMuted, fontStyle: 'italic' },
+  notesInput: {
+    backgroundColor: colors.bgCard, borderWidth: 0.5,
+    borderColor: colors.accent, borderRadius: radius.lg,
+    padding: spacing.md, fontSize: 13, color: colors.textPrimary,
+    lineHeight: 20, minHeight: 100,
+  },
+  charCount: { fontSize: 11, color: colors.textMuted, textAlign: 'right', marginTop: 4 },
+  notesBtnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  saveNotesBtn: {
+    flex: 1, backgroundColor: colors.accent,
+    borderRadius: radius.lg, paddingVertical: 11, alignItems: 'center',
+  },
+  saveNotesBtnText: { fontSize: 13, fontWeight: '600', color: '#000' },
+  cancelNotesBtn: {
+    flex: 1, borderWidth: 0.5, borderColor: colors.border,
+    borderRadius: radius.lg, paddingVertical: 11, alignItems: 'center',
+  },
+  cancelNotesBtnText: { fontSize: 13, color: colors.textMuted },
+  editNotesBtn: {
+    marginTop: spacing.sm, borderWidth: 0.5,
+    borderColor: colors.accent, borderRadius: radius.lg,
+    paddingVertical: 10, alignItems: 'center',
+  },
+  editNotesBtnText: { fontSize: 13, color: colors.accent },
 
   // Actions
   actionRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },

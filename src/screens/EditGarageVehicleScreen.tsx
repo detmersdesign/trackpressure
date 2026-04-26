@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Alert, Modal,
+  StyleSheet, Alert, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,7 +19,9 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
   const [nickname, setNickname] = useState(garageVehicle.nickname ?? '');
   const [userYear, setUserYear] = useState(garageVehicle.user_year?.toString() ?? '');
   const [notes, setNotes]       = useState(garageVehicle.notes ?? '');
-  const userYearRef = useRef<TextInput>(null);
+  const userYearRef  = useRef<TextInput>(null);
+  const scrollRef    = useRef<ScrollView>(null);
+  const tireRowRefs  = useRef<Map<string, View>>(new Map());
   const [saving, setSaving]                 = useState(false);
   const [addTyreVisible, setAddTyreVisible] = useState(false);
   const [localTireSets, setLocalTireSets]   = useState<GarageTireSet[]>(garageVehicle.tire_sets ?? []);
@@ -200,7 +202,8 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
         {/* Vehicle identity + order controls */}
         <View style={styles.vehicleHeader}>
@@ -298,7 +301,11 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         ) : (
           localTireSets.map(ts => (
-            <View key={ts.id} style={styles.tyreRow}>
+            <View
+              key={ts.id}
+              style={styles.tyreRow}
+              ref={el => { if (el) tireRowRefs.current.set(ts.id, el); else tireRowRefs.current.delete(ts.id); }}
+            >
               <View style={{ flex: 1 }}>
                 <View style={styles.tyreNameRow}>
                   {editingTireSetId === ts.id ? (
@@ -310,6 +317,16 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
                       onBlur={() => handleRenameTireSet(ts.id, editingName)}
                       autoFocus
                       returnKeyType="done"
+                      onFocus={() => {
+                        setTimeout(() => {
+                          const rowRef = tireRowRefs.current.get(ts.id);
+                          rowRef?.measureLayout(
+                            scrollRef.current as any,
+                            (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                            () => {}
+                          );
+                        }, 150);
+                      }}
                     />
                   ) : (
                     <TouchableOpacity onPress={() => { setEditingTireSetId(ts.id); setEditingName(ts.name); }}>
@@ -354,6 +371,7 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
         </TouchableOpacity>
 
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <AddTyreSetModal
         visible={addTyreVisible}

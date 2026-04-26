@@ -238,7 +238,7 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
         .insert({ ...entry, id: entryId });
     } catch {}
 
-    setLastEntry(entry);
+    setLastEntry({ ...entry, id: entryId });
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);

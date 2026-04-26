@@ -26,6 +26,7 @@ import HistoricEventSetupScreen from '../screens/HistoricEventSetupScreen';
 import EditSilhouetteScreen     from '../screens/EditSilhouetteScreen';
 import SessionNotesScreen       from '../screens/SessionNotesScreen';
 import SessionDetailScreen      from '../screens/SessionDetailScreen';
+import iOSImageCropScreen       from '../screens/iOSImageCropScreen';
 
 // ── Stack navigators ──────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ function LogStackNav() {
       <LogStack.Screen name="Feedback"           component={FeedbackScreen} />
       <LogStack.Screen name="SessionNotes"      component={SessionNotesScreen} />
       <LogStack.Screen name="SessionDetail"     component={SessionDetailScreen} />
+      <LogStack.Screen name="iOSImageCrop"      component={iOSImageCropScreen} />
     </LogStack.Navigator>
   );
 }
@@ -67,6 +69,7 @@ function HistoryStackNav() {
       <HistoryStack.Screen name="Feedback"          component={FeedbackScreen} />
       <HistoryStack.Screen name="SessionNotes"     component={SessionNotesScreen} />
       <HistoryStack.Screen name="SessionDetail"    component={SessionDetailScreen} />
+      <HistoryStack.Screen name="iOSImageCrop"     component={iOSImageCropScreen} />
     </HistoryStack.Navigator>
   );
 }
@@ -91,6 +94,7 @@ function GarageStackNav() {
       <GarageStack.Screen name="Confirmation"        component={ConfirmationScreen} />
       <GarageStack.Screen name="SessionNotes"      component={SessionNotesScreen} />
       <GarageStack.Screen name="SessionDetail"     component={SessionDetailScreen} />
+      <GarageStack.Screen name="iOSImageCrop"      component={iOSImageCropScreen} />
     </GarageStack.Navigator>
   );
 }

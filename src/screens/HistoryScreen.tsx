@@ -288,43 +288,63 @@ export default function HistoryScreen({ navigation, route }: Props) {
     }
   }
 
-  // ── Scatter chart — single track only ─────────────────────────────────────
+// ── Scatter chart — single track only ─────────────────────────────────────
 
-  const chartSessions = sessions.filter(s => s.ambient_temp_c != null && (filter !== 'personal' || s.user_id === currentUserId));
-  const hasChartData  = chartSessions.length >= 2 && trackView === 'single';
+const chartSessions = sessions.filter(
+  s => s.ambient_temp_c != null && (filter !== 'personal' || s.user_id === currentUserId)
+);
 
-  const temps  = chartSessions.map(s => {
-    const c = s.ambient_temp_c!;
-    return settings.temperature_unit === 'f' ? c * 9/5 + 32 : c;
-  });
-  const fronts = chartSessions.map(s => s.cold_front_psi);
+const temps  = chartSessions.map(s => {
+  const c = s.ambient_temp_c!;
+  return settings.temperature_unit === 'f' ? c * 9 / 5 + 32 : c;
+});
+const fronts = chartSessions.map(s => s.cold_front_psi);
 
-  const minT = hasChartData ? Math.min(...temps)  - 2 : 10;
-  const maxT = hasChartData ? Math.max(...temps)  + 2 : 40;
-  const minP = hasChartData ? Math.min(...fronts) - 1 : 28;
-  const maxP = hasChartData ? Math.max(...fronts) + 1 : 38;
+// Compute raw min/max first — needed before hasChartData can be evaluated
+const rawMinT = chartSessions.length >= 2 ? Math.min(...temps)  : 0;
+const rawMaxT = chartSessions.length >= 2 ? Math.max(...temps)  : 0;
+const rawMinP = chartSessions.length >= 2 ? Math.min(...fronts) : 0;
+const rawMaxP = chartSessions.length >= 2 ? Math.max(...fronts) : 0;
 
-  const chartW = W - PAD.left - PAD.right;
-  const chartH = CHART_H - PAD.top - PAD.bottom;
+// Guard: need ≥2 sessions AND meaningful spread in both axes
+const hasChartData =
+  chartSessions.length >= 2 &&
+  trackView === 'single' &&
+  rawMaxT > rawMinT &&
+  rawMaxP > rawMinP;
 
-  function toX(t: number) { return PAD.left + ((t - minT) / (maxT - minT)) * chartW; }
-  function toY(p: number) { return PAD.top + chartH - ((p - minP) / (maxP - minP)) * chartH; }
+const minT = hasChartData ? rawMinT - 2 : 10;
+const maxT = hasChartData ? rawMaxT + 2 : 40;
+const minP = hasChartData ? rawMinP - 1 : 28;
+const maxP = hasChartData ? rawMaxP + 1 : 38;
 
-  let slope = 0; let intercept = 0;
-  if (hasChartData) {
-    const n     = temps.length;
-    const sumX  = temps.reduce((a, b) => a + b, 0);
-    const sumY  = fronts.reduce((a, b) => a + b, 0);
-    const sumXY = temps.reduce((a, t, i) => a + t * fronts[i], 0);
-    const sumX2 = temps.reduce((a, t) => a + t * t, 0);
-    slope     = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-    intercept = (sumY - slope * sumX) / n;
-  }
+const chartW = W - PAD.left - PAD.right;
+const chartH = CHART_H - PAD.top - PAD.bottom;
 
-  const trendX1 = toX(minT); const trendY1 = toY(slope * minT + intercept);
-  const trendX2 = toX(maxT); const trendY2 = toY(slope * maxT + intercept);
-  const todayX  = toX(ambientToday);
-  const todayY  = toY(slope * ambientToday + intercept);
+function toX(t: number) {
+  if (maxT === minT) return PAD.left + chartW / 2;
+  return PAD.left + ((t - minT) / (maxT - minT)) * chartW;
+}
+function toY(p: number) {
+  if (maxP === minP) return PAD.top + chartH / 2;
+  return PAD.top + chartH - ((p - minP) / (maxP - minP)) * chartH;
+}
+
+let slope = 0; let intercept = 0;
+if (hasChartData) {
+  const n     = temps.length;
+  const sumX  = temps.reduce((a, b) => a + b, 0);
+  const sumY  = fronts.reduce((a, b) => a + b, 0);
+  const sumXY = temps.reduce((a, t, i) => a + t * fronts[i], 0);
+  const sumX2 = temps.reduce((a, t) => a + t * t, 0);
+  slope     = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  intercept = (sumY - slope * sumX) / n;
+}
+
+const trendX1 = toX(minT); const trendY1 = toY(slope * minT + intercept);
+const trendX2 = toX(maxT); const trendY2 = toY(slope * maxT + intercept);
+const todayX  = toX(ambientToday);
+const todayY  = toY(slope * ambientToday + intercept);
 
   // Temp reference — centre of optimal window, or avg of all session hot temps
   const tempRefC: number | null = (() => {

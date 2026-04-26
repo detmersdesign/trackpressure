@@ -108,7 +108,9 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
   const [notes,      setNotes]      = useState(p.notes ?? '');
   const [editingNotes, setEditingNotes] = useState(false);
   const [saving,     setSaving]     = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef     = useRef<TextInput>(null);
+  const scrollRef    = useRef<ScrollView>(null);
+  const notesViewRef = useRef<View>(null);
 
   // ── Display helpers ───────────────────────────────────────────────────────
 
@@ -346,7 +348,7 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
     <SafeAreaView style={globalStyles.screen}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         {/* Top bar */}
         <View style={styles.topBar}>
@@ -369,6 +371,7 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
         </View>
 
         <ScrollView
+          ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -412,7 +415,20 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
               </Text>
             </View>
           )}
-          {isPersonal && <View style={styles.section}>
+          {isPersonal && (
+            <View
+              ref={notesViewRef}
+              style={styles.section}
+              onLayout={() => {
+                if (editingNotes) {
+                  notesViewRef.current?.measureLayout(
+                    scrollRef.current as any,
+                    (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                    () => {}
+                  );
+                }
+              }}
+            >
             {editingNotes ? (
               <>
                 <TextInput
@@ -426,9 +442,23 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
                   autoFocus
                   placeholder="What did you notice? Setup feel, track conditions…"
                   placeholderTextColor={colors.textMuted}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      notesViewRef.current?.measureLayout(
+                        scrollRef.current as any,
+                        (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                        () => {}
+                      );
+                    }, 150);
+                  }}
                 />
-                <Text style={styles.charCount}>{notes.length} / {MAX_NOTES}</Text>
                 <View style={styles.notesBtnRow}>
+                  <TouchableOpacity
+                    style={styles.cancelNotesBtn}
+                    onPress={() => { setNotes(p.notes ?? ''); setEditingNotes(false); }}
+                  >
+                    <Text style={styles.cancelNotesBtnText}>Cancel</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.saveNotesBtn}
                     onPress={handleSaveNotes}
@@ -438,13 +468,8 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
                       {saving ? 'Saving…' : 'Save notes'}
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.cancelNotesBtn}
-                    onPress={() => { setNotes(p.notes ?? ''); setEditingNotes(false); }}
-                  >
-                    <Text style={styles.cancelNotesBtnText}>Cancel</Text>
-                  </TouchableOpacity>
                 </View>
+                <Text style={styles.charCount}>{notes.length} / {MAX_NOTES}</Text>
               </>
             ) : (
               <>
@@ -456,7 +481,10 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
                 </View>
                 <TouchableOpacity
                   style={styles.editNotesBtn}
-                  onPress={() => { setEditingNotes(true); setTimeout(() => inputRef.current?.focus(), 100); }}
+                  onPress={() => {
+                    setEditingNotes(true);
+                    setTimeout(() => inputRef.current?.focus(), 100);
+                  }}
                 >
                   <Text style={styles.editNotesBtnText}>
                     {notes.trim().length > 0 ? 'Edit notes' : 'Add notes'}
@@ -464,7 +492,8 @@ export default function SessionDetailScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               </>
             )}
-          </View>}
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

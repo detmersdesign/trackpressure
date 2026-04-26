@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, Alert, Image, ScrollView,
@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import { Platform, Image as RNImage } from 'react-native';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Directory, File, Paths } from 'expo-file-system/next';
 import { colors, typography, spacing, radius, globalStyles } from '../lib/theme';
@@ -49,16 +50,19 @@ export default function EditSilhouetteScreen({ navigation, route }: Props) {
       return;
     }
 
+    // iOS doesn't reliably enforce aspect ratio in the built-in editor
+    // so we skip allowsEditing on iOS and centre-crop manually via manipulator
+    const isIOS = Platform.OS === 'ios';
     const result = source === 'camera'
       ? await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
-          allowsEditing: true,
+          allowsEditing: !isIOS,
           aspect: [2, 1],
           quality: 1,
         })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
-          allowsEditing: true,
+          allowsEditing: !isIOS,
           aspect: [2, 1],
           quality: 1,
         });
@@ -67,14 +71,33 @@ export default function EditSilhouetteScreen({ navigation, route }: Props) {
 
     // Resize to exact 1024×512 PNG
     try {
-      const ctx = ImageManipulator.manipulate(result.assets[0].uri);
-      ctx.resize({ width: TARGET_WIDTH, height: TARGET_HEIGHT });
-      const rendered = await ctx.renderAsync();
-      const manipulated = await rendered.saveAsync({ compress: 1, format: SaveFormat.PNG });
-      setPreviewUri(manipulated.uri);
-      setIsDirty(true);
+      const asset = result.assets[0];
+
+      if (isIOS) {
+        // Navigate to interactive crop screen — returns croppedUri via route.params on focus
+        const { width: srcW, height: srcH } = await new Promise<{ width: number; height: number }>(
+          (resolve, reject) => RNImage.getSize(asset.uri, (w, h) => resolve({ width: w, height: h }), reject)
+        );
+        navigation.navigate('iOSImageCrop', {
+          imageUri:    asset.uri,
+          imageWidth:  srcW,
+          imageHeight: srcH,
+          onCropped:   (uri: string) => {
+            setPreviewUri(uri);
+            setIsDirty(true);
+          },
+        });
+      } else {
+        // Android uses system crop UI — just resize the result
+        const ctx = ImageManipulator.manipulate(asset.uri);
+        ctx.resize({ width: TARGET_WIDTH, height: TARGET_HEIGHT });
+        const rendered    = await ctx.renderAsync();
+        const manipulated = await rendered.saveAsync({ compress: 1, format: SaveFormat.PNG });
+        setPreviewUri(manipulated.uri);
+        setIsDirty(true);
+      }
     } catch {
-      // User cancelled crop or manipulator failed — do nothing
+      // User cancelled or manipulator failed — do nothing
     }
   }
 
@@ -224,7 +247,7 @@ export default function EditSilhouetteScreen({ navigation, route }: Props) {
         <View style={styles.previewWrap}>
           {previewUri ? (
             <Image
-              source={{ uri: previewUri, cache: 'reload'  }}
+              source={{ uri: previewUri  }}
               style={styles.previewImage}
               resizeMode="cover"
               //onError={(e) => Alert.alert('Image error', e.nativeEvent.error)}

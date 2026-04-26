@@ -93,11 +93,13 @@ export default function SessionNotesScreen({ navigation, route }: Props) {
   } = params;
 
   const { displayPressure, pressureUnit, displayTemp, tempUnit, settings } = useSettings();
-  const { activeEvent } = useEvent();
+  const { activeEvent, lastEntry, setLastEntry } = useEvent();
 
   const [notes,   setNotes]   = useState('');
   const [saving,  setSaving]  = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef   = useRef<TextInput>(null);
+  const scrollRef  = useRef<ScrollView>(null);
+  const notesViewRef = useRef<View>(null);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -152,6 +154,7 @@ export default function SessionNotesScreen({ navigation, route }: Props) {
           .from('pressure_entries')
           .update({ notes: trimmed })
           .eq('id', entryId);
+        setLastEntry({ ...lastEntry, notes: trimmed });
       }
     } catch {}
     setSaving(false);
@@ -272,7 +275,7 @@ export default function SessionNotesScreen({ navigation, route }: Props) {
     <SafeAreaView style={globalStyles.screen}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
 
@@ -295,19 +298,32 @@ export default function SessionNotesScreen({ navigation, route }: Props) {
         </View>
 
         <ScrollView
+          ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Summary cards */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>{sectionLabel}</Text>
-            {mode === 'gradient'  && renderGradientCards()}
-            {mode === 'pyrometer' && renderPyrometerCards()}
-            {mode === 'pressures' && renderPressureCards()}
-          </View>
+          {/* Summary cards — hidden when hot was skipped (all null) */}
+          {(hotFL != null || hotFR != null || hotRL != null || hotRR != null) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>{sectionLabel}</Text>
+              {mode === 'gradient'  && renderGradientCards()}
+              {mode === 'pyrometer' && renderPyrometerCards()}
+              {mode === 'pressures' && renderPressureCards()}
+            </View>
+          )}
 
           {/* Notes input */}
-          <View style={styles.notesWrap}>
+          <View
+            ref={notesViewRef}
+            style={styles.notesWrap}
+            onLayout={() => {
+              notesViewRef.current?.measureLayout(
+                scrollRef.current as any,
+                (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                () => {}
+              );
+            }}
+          >
             <Text style={styles.sectionLabel}>Driver notes</Text>
             <TouchableOpacity
               activeOpacity={1}
@@ -325,6 +341,15 @@ export default function SessionNotesScreen({ navigation, route }: Props) {
                 onChangeText={setNotes}
                 textAlignVertical="top"
                 autoFocus={false}
+                onFocus={() => {
+                  setTimeout(() => {
+                    notesViewRef.current?.measureLayout(
+                      scrollRef.current as any,
+                      (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                      () => {}
+                    );
+                  }, 150);
+                }}
               />
             </TouchableOpacity>
             <Text style={styles.charCount}>{notes.length} / {MAX_NOTES}</Text>

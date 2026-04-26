@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import { GarageVehicle, GarageTireSet, Tire, Vehicle } from '../types';
 import { VehicleSilhouette } from '../components/VehicleSilhouette';
 import { useGarageVehicleImage } from '../hooks/useGarageVehicleImage';
+import WhatsNewModal from '../components/WhatsNewModal';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -391,7 +392,7 @@ export default function GarageScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={globalStyles.screen}>
-
+      <WhatsNewModal />
       {/* Top bar */}
       <View style={styles.topBar}>
         <Text style={typography.heading}>Garage</Text>

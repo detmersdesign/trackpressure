@@ -364,7 +364,7 @@ export default function QuickLogScreen({ navigation, route }: Props) {
         .insert({ ...entry, id: entryId, signal_score: signalScore, created_at: historicDate ?? new Date().toISOString() });
     } catch {}
 
-    setLastEntry(entry);
+    setLastEntry({ ...entry, id: entryId });
     incrementSession();
     await clearOpenSession();
     setSubmitting(false);
