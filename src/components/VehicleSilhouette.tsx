@@ -252,10 +252,17 @@ interface Props {
 
 export function VehicleSilhouette({ vehicleId, category, height, userImageUri }: Props) {
   const [bannerWidth, setBannerWidth] = useState(0);
+  // Defensive null guards — category may be null for custom vehicles
+  // or vehicles added before silhouette_category was required.
+  // Three-layer fallback: vehicle-specific → category → generic.
+  const safeCategory = (category && CATEGORY_SILHOUETTES[category])
+    ? category
+    : 'generic';
+
   const source = userImageUri
     ? { uri: userImageUri }
     : (vehicleId && VEHICLE_SILHOUETTES[vehicleId]) ??
-      CATEGORY_SILHOUETTES[category ?? 'generic'] ??
+      CATEGORY_SILHOUETTES[safeCategory] ??
       CATEGORY_SILHOUETTES.generic;
 
   // Enforce 2:1 aspect ratio regardless of source image dimensions.

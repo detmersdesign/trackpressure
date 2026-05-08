@@ -13,7 +13,7 @@ import { isHotInRange } from '../lib/recommendations';
 import { supabase } from '../lib/supabase';
 
 const W = Dimensions.get('window').width - spacing.lg * 4 - 2;
-const BAR_H = 28;
+const BAR_H = 36;
 const BAR_GAP = 8;
 const LABEL_W = 52;
 
@@ -62,7 +62,7 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
       .or(`is_hidden.eq.false${currentUserId ? `,and(is_hidden.eq.true,user_id.eq.${currentUserId})` : ''}`)
       .eq('is_outlier', false)
       .not('hot_front_psi', 'is', null)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .then(({ data }) => { if (data) setSessions(data); });
   }, [vehicleId, tireId, trackId, currentUserId]);
 
@@ -98,7 +98,8 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
     ? deltas.filter(d => isHotInRange(d.hotPsi, target)).length
     : 0;
 
-  const chartW = W - LABEL_W - spacing.md;
+  const TEXT_ZONE = (W - LABEL_W) * 0.26;  // 26% of available width reserved for labels
+  const BAR_ZONE  = (W - LABEL_W) * 0.74 - spacing.md;  // 74% for bars
 
   return (
     <SafeAreaView style={globalStyles.screen}>
@@ -169,7 +170,7 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
                 height={deltas.length * (BAR_H + BAR_GAP) + 20}
               >
                 {deltas.map((d, i) => {
-                  const barW = (d.delta / maxDelta) * chartW;
+                  const barW = (d.delta / maxDelta) * BAR_ZONE;
                   const y = i * (BAR_H + BAR_GAP);
                   const inRange = target ? isHotInRange(d.hotPsi, target) : null;
                   const barColor = inRange === true ? colors.success
@@ -189,19 +190,19 @@ export default function DeltaAnalysisScreen({ navigation, route }: Props) {
                         rx={4} fill={barColor} opacity={0.8}
                       />
                       <SvgText
-                        x={LABEL_W + Math.max(barW, 2) + 6}
-                        y={y + BAR_H / 2 + 4}
+                        x={LABEL_W + BAR_ZONE + 6}
+                        y={y + BAR_H / 2 - 2}
                         fontSize={11} fill={colors.textSecondary}
                         fontFamily="monospace"
                       >
                         +{displayPressure(d.delta)}
                       </SvgText>
                       <SvgText
-                        x={LABEL_W + Math.max(barW, 2) + 36}
-                        y={y + BAR_H / 2 + 4}
-                        fontSize={10} fill={colors.textMuted}
+                        x={LABEL_W + BAR_ZONE + 6}
+                        y={y + BAR_H / 2 + 11}
+                        fontSize={9} fill={colors.textMuted}
                       >
-                        ({displayPressure(d.coldPsi)}→{displayPressure(d.hotPsi)})
+                        {displayPressure(d.coldPsi)}→{displayPressure(d.hotPsi)}
                       </SvgText>
                     </G>
                   );

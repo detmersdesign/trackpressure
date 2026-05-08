@@ -14,6 +14,7 @@ type Props = NativeStackScreenProps<any, 'EditGarageVehicle'>;
 
 export default function EditGarageVehicleScreen({ navigation, route }: Props) {
   const garageVehicle: GarageVehicle = route.params?.garageVehicle;
+  const autoOpenTyreModal: boolean   = route.params?.autoOpenTyreModal ?? false;
   const vehicle  = garageVehicle.vehicle;
 
   const [nickname, setNickname] = useState(garageVehicle.nickname ?? '');
@@ -26,6 +27,13 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
   const [addTyreVisible, setAddTyreVisible] = useState(false);
   const [localTireSets, setLocalTireSets]   = useState<GarageTireSet[]>(garageVehicle.tire_sets ?? []);
   const [editingTireSetId, setEditingTireSetId] = useState<string | null>(null);
+
+  // Auto-open tyre set modal when navigating here after adding a new car
+  useEffect(() => {
+    if (autoOpenTyreModal) {
+      setAddTyreVisible(true);
+    }
+  }, []);
   const [editingName, setEditingName]           = useState('');
   const { displayPressure, pressureUnit } = useSettings();
 
@@ -125,7 +133,12 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
     if (error) {
       Alert.alert('Error', 'Could not save changes.');
     } else {
-      navigation.goBack();
+      // New car with no tire sets — open the add tire set modal automatically
+      if (localTireSets.length === 0) {
+        setAddTyreVisible(true);
+      } else {
+        navigation.goBack();
+      }
     }
   }
 
@@ -379,8 +392,13 @@ export default function EditGarageVehicleScreen({ navigation, route }: Props) {
         existingTireSets={localTireSets}
         onClose={() => setAddTyreVisible(false)}
         onAdded={(newSet) => {
-          setLocalTireSets(prev => [...prev, newSet]);
+          const updatedSets = [...localTireSets, newSet];
+          setLocalTireSets(updatedSets);
           setAddTyreVisible(false);
+          // If this was the first tire set (new car flow), go back to garage
+          if (localTireSets.length === 0) {
+            navigation.goBack();
+          }
         }}
       />
     </SafeAreaView>

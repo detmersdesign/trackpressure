@@ -11,6 +11,7 @@ import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
 import { useEvent } from '../hooks/useEventContext';
 import { useSettings } from '../hooks/useSettings';
 import { ActiveEvent, SessionType, Vehicle, Tire, Track, TrackConfig } from '../types';
+import { supabase } from '../lib/supabase';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 const SESSION_TYPES: { key: SessionType; label: string }[] = [
@@ -32,8 +33,9 @@ export default function EventSetupScreen({ navigation, route }: Props) {
   const vehicle         = route.params?.vehicle;
   const tireFront       = route?.params?.tireFront;
   const tireRear        = route?.params?.tireRear;
-  const tireSetName     = route?.params?.tireSetName ?? '';
-  const garageCardIndex = route?.params?.garageCardIndex ?? 0;
+  const tireSetName       = route?.params?.tireSetName ?? '';
+  const garageCardIndex   = route?.params?.garageCardIndex ?? 0;
+  const garageTireSetId   = route?.params?.garageTireSetId ?? null;
 
   const [selectedTrack, setSelectedTrack]   = useState<Track | null>(null);
   const [selectedConfig, setSelectedConfig] = useState<TrackConfig | null>(null);
@@ -53,17 +55,50 @@ export default function EventSetupScreen({ navigation, route }: Props) {
     }
   }, [nearbyTracks]);
 
-  function handleStart() {
+  async function handleStart() {
     if (!selectedTrack || !vehicle || !tireFront || !tireRear) return;
+
+    // Fetch learned warm pressure values once — passed to all screens via ActiveEvent
+    // so no downstream screen needs to make its own Supabase call for this data.
+    let learnedValues: Partial<ActiveEvent> = {};
+    try {
+      const tireSetId = garageTireSetId;
+      if (tireSetId) {
+        const { data } = await supabase
+          .from('garage_tire_sets')
+          .select(`
+            id,
+            p_warm_norm_avg_front, p_warm_norm_avg_rear, p_warm_session_count,
+            t_cooldown_front_c, t_cooldown_rear_c, t_cooldown_session_count
+          `)
+          .eq('id', tireSetId)
+          .single();
+        if (data) {
+          learnedValues = {
+            garage_tire_set_id:        data.id,
+            p_warm_norm_avg_front:     data.p_warm_norm_avg_front  ?? null,
+            p_warm_norm_avg_rear:      data.p_warm_norm_avg_rear   ?? null,
+            p_warm_session_count:      data.p_warm_session_count   ?? 0,
+            t_cooldown_front_c:        data.t_cooldown_front_c     ?? null,
+            t_cooldown_rear_c:         data.t_cooldown_rear_c      ?? null,
+            t_cooldown_session_count:  data.t_cooldown_session_count ?? 0,
+          };
+        }
+      }
+    } catch {}
+
     const event: ActiveEvent = {
       vehicle,
-      tire_front:   tireFront,
-      tire_rear:    tireRear,
-      track:        selectedTrack,
-      track_config: selectedConfig ?? selectedTrack.configurations[0],
-      session_type: sessionType,
-      started_at:   new Date().toISOString(),
+      tire_front:    tireFront,
+      tire_rear:     tireRear,
+      track:         selectedTrack,
+      track_config:  selectedConfig ?? selectedTrack.configurations[0],
+      session_type:  sessionType,
+      started_at:    new Date().toISOString(),
+      tire_set_name: tireSetName,
+      ...learnedValues,
     };
+
     setActiveEvent(event);
     if (settings.pyrometer_enabled) {
       navigation.navigate('ColdCornerEntry');

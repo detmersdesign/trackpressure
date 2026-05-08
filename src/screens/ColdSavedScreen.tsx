@@ -11,11 +11,12 @@ import { useSettings } from '../hooks/useSettings';
 import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
 import { CommonActions } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { v4 as uuidv4 } from 'uuid';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
 export default function ColdSavedScreen({ navigation }: Props) {
-  const { openSession, setOpenSession, setActiveTab, clearOpenSession, setActiveEvent } = useEvent();
+  const { openSession, setOpenSession, setActiveTab, clearOpenSession, setActiveEvent, setLastEntry, incrementSession } = useEvent();
   const { weather } = useLocationAndWeather();
   const { displayPressure, pressureUnit, settings } = useSettings();
 
@@ -37,11 +38,39 @@ export default function ColdSavedScreen({ navigation }: Props) {
     .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const corners = [
-    { label: 'Front left',  val: session.predicted_hot_fl },
-    { label: 'Front right', val: session.predicted_hot_fr },
-    { label: 'Rear left',   val: session.predicted_hot_rl },
-    { label: 'Rear right',  val: session.predicted_hot_rr },
+    { label: 'Front left',  val: session.predicted_warm_fl ?? session.predicted_hot_fl },
+    { label: 'Front right', val: session.predicted_warm_fr ?? session.predicted_hot_fr },
+    { label: 'Rear left',   val: session.predicted_warm_rl ?? session.predicted_hot_rl },
+    { label: 'Rear right',  val: session.predicted_warm_rr ?? session.predicted_hot_rr },
   ];
+
+  // ── Shared cold-only entry save ──────────────────────────────────────────
+  async function saveEntry(): Promise<string> {
+    const entryId = uuidv4();
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from('pressure_entries').insert({
+      id:             entryId,
+      user_id:        user?.id,
+      vehicle_id:     session.event.vehicle.id,
+      tire_id:        session.event.tire_front.id,
+      track_id:       session.event.track.id,
+      session_type:   session.event.session_type,
+      cold_front_psi: session.cold_front_psi,
+      cold_rear_psi:  session.cold_rear_psi,
+      cold_fl_psi:    session.cold_fl_psi    ?? null,
+      cold_fr_psi:    session.cold_fr_psi    ?? null,
+      cold_rl_psi:    session.cold_rl_psi    ?? null,
+      cold_rr_psi:    session.cold_rr_psi    ?? null,
+      ambient_temp_c: session.ambient_session_start ?? session.ambient_temp_c,
+      ambient_source: session.ambient_source as 'auto' | 'manual',
+      is_hidden:      session.is_hidden ?? false,
+      signal_score:   0.5,
+      created_at:     session.historic_date ?? new Date().toISOString(),
+    });
+    setLastEntry({ id: entryId, cold_front_psi: session.cold_front_psi, cold_rear_psi: session.cold_rear_psi });
+    incrementSession();
+    return entryId;
+  }
 
   return (
     <SafeAreaView style={globalStyles.screen}>
@@ -153,12 +182,31 @@ export default function ColdSavedScreen({ navigation }: Props) {
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnSecondary]}
-            onPress={() => settings.pyrometer_enabled
-              ? navigation.navigate('ColdCornerEntry')
-              : navigation.navigate('QuickLog', { mode: 'cold' })
-            }
+            onPress={async () => {
+              const entryId = await saveEntry();
+              const tireLabel   = session.event.tire_front.brand + ' ' + session.event.tire_front.model;
+              const trackConfig = session.event.track_config?.name ?? session.event.track.name;
+              navigation.navigate('SessionNotes', {
+                entryId,
+                mode:        'pressures',
+                trackConfig,
+                tireLabel,
+                sessionType: session.event.session_type,
+                hotFL: null, hotFR: null, hotRL: null, hotRR: null,
+                tempFL: null, tempFR: null, tempRL: null, tempRR: null,
+                flInner: null, flMid: null, flOuter: null,
+                frInner: null, frMid: null, frOuter: null,
+                rlInner: null, rlMid: null, rlOuter: null,
+                rrInner: null, rrMid: null, rrOuter: null,
+                targetMin:    null,
+                targetMax:    null,
+                historicDate: session.historic_date ?? null,
+                historicEvent: null,
+                nextScreen:   settings.pyrometer_enabled ? 'ColdCornerEntry' : 'QuickLog',
+              });
+            }}
           >
-            <Text style={styles.actionBtnSecondaryText}>Next session</Text>
+            <Text style={styles.actionBtnSecondaryText}>Notes & next session</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnPrimary]}
@@ -178,26 +226,8 @@ export default function ColdSavedScreen({ navigation }: Props) {
         <TouchableOpacity
           style={styles.finishBtn}
           onPress={async () => {
-            // Save cold-only entry before clearing session
-            const { data: { user } } = await supabase.auth.getUser();
-            await supabase.from('pressure_entries').insert({
-              user_id:        user?.id,
-              vehicle_id:     session.event.vehicle.id,
-              tire_id:        session.event.tire_front.id,
-              track_id:       session.event.track.id,
-              session_type:   session.event.session_type,
-              cold_front_psi: session.cold_front_psi,
-              cold_rear_psi:  session.cold_rear_psi,
-              cold_fl_psi:    session.cold_fl_psi    ?? null,
-              cold_fr_psi:    session.cold_fr_psi    ?? null,
-              cold_rl_psi:    session.cold_rl_psi    ?? null,
-              cold_rr_psi:    session.cold_rr_psi    ?? null,
-              ambient_temp_c: session.ambient_session_start ?? session.ambient_temp_c,
-              ambient_source: session.ambient_source as 'auto' | 'manual',
-              is_hidden:      session.is_hidden ?? false,
-              signal_score:   0.5,
-              created_at: session.historic_date ?? new Date().toISOString(),
-            });
+            // Finish event — save entry, skip notes, go straight to garage
+            await saveEntry();
             setActiveTab('garage');
             navigation.dispatch(
               CommonActions.reset({

@@ -22,6 +22,174 @@ export function predictHotRounded(
   return roundHalf(raw);
 }
 
+const T_REF_K = 293.15; // 20°C reference ambient for Approach A normalisation
+
+// ── Predict warm paddock pressure ─────────────────────────────────────────────
+// Predicts what the driver will read on their gauge after returning to the
+// paddock. Uses learned personal data when available, falls back to gas law.
+//
+// Priority:
+//   1. Approach B (pyrometer users): learned T_cooldown per axle
+//   2. Approach A (pressure-only):   learned normalised warm pressure average
+//   3. Fallback: gas law with T_hot_ideal — will run ~3 PSI high initially
+//
+// All temperatures in Celsius, converted to Kelvin internally.
+export function predictWarmPressure(
+  coldPsi: number,
+  ambientC: number,
+  tireTarget: { target_temp_min_c?: number | null; target_temp_max_c?: number | null } | null,
+  tCooldownC: number | null | undefined,
+  tCooldownSessionCount: number,
+  pWarmNormAvg: number | null | undefined,
+  pWarmSessionCount: number,
+): number {
+  const MIN_SESSIONS = 2;
+  const T_cold_K    = cToKelvin(ambientC);
+  const T_ambient_K = cToKelvin(ambientC);
+
+  // Approach B — pyrometer users with learned T_cooldown
+  if (
+    tCooldownC != null &&
+    tCooldownSessionCount >= MIN_SESSIONS &&
+    tireTarget?.target_temp_min_c != null &&
+    tireTarget?.target_temp_max_c != null
+  ) {
+    const T_hot_ideal_K = cToKelvin(
+      (tireTarget.target_temp_min_c + tireTarget.target_temp_max_c) / 2
+    );
+    const T_warm_K = T_hot_ideal_K - tCooldownC;
+    const raw = (coldPsi + ATM_PSI) * (T_warm_K / T_cold_K) - ATM_PSI;
+    return roundHalf(raw);
+  }
+
+  // Approach A — pressure-only users with normalised warm average
+  if (pWarmNormAvg != null && pWarmSessionCount >= MIN_SESSIONS) {
+    const raw = (pWarmNormAvg + ATM_PSI) * (T_ambient_K / T_REF_K) - ATM_PSI;
+    return roundHalf(raw);
+  }
+
+  // Fallback — gas law with ideal hot target temp
+  const tyreTempC =
+    tireTarget?.target_temp_min_c != null && tireTarget?.target_temp_max_c != null
+      ? (tireTarget.target_temp_min_c + tireTarget.target_temp_max_c) / 2
+      : DEFAULT_TYRE_TEMP_C;
+  return predictHotRounded(coldPsi, ambientC, tyreTempC);
+}
+
+// ── Update warm learning after a completed hot session ────────────────────────
+// Called after successful hot pressure insert in QuickLogScreen,
+// CornerReviewScreen, and HotGradientEntryScreen.
+// Best-effort — never throws or blocks the save flow.
+export async function updateWarmLearning(
+  supabaseClient: any,
+  garageTireSetId: string,
+  ambientC: number,
+  coldFrontPsi: number,
+  hotFrontPsi: number | null | undefined,
+  pyroFrontAvgC: number | null | undefined,
+  coldRearPsi: number,
+  hotRearPsi: number | null | undefined,
+  pyroRearAvgC: number | null | undefined,
+  current: {
+    p_warm_norm_avg_front?: number | null;
+    p_warm_norm_avg_rear?:  number | null;
+    p_warm_session_count?:  number;
+    t_cooldown_front_c?:    number | null;
+    t_cooldown_rear_c?:     number | null;
+    t_cooldown_session_count?: number;
+  },
+  tireTarget: { target_temp_min_c?: number | null; target_temp_max_c?: number | null } | null,
+): Promise<void> {
+  try {
+    const T_cold_K = cToKelvin(ambientC);
+    const ATM      = ATM_PSI;
+    const updates: Record<string, any> = {};
+
+    // ── Approach A: normalised warm pressure average ───────────────────────
+    const runApproachA = (
+      hotPsi: number,
+      coldPsi: number,
+      storedAvg: number | null | undefined,
+      sessionCount: number,
+      axle: 'front' | 'rear'
+    ) => {
+      if (hotPsi < 10 || hotPsi > 80) return;
+      const P_warm_abs = hotPsi + ATM;
+      const P_norm     = (P_warm_abs * (T_REF_K / T_cold_K)) - ATM;
+      const weight     = Math.max(0.15, 0.40 - (sessionCount * 0.05));
+      const newAvg     = storedAvg == null
+        ? P_norm
+        : ((1 - weight) * storedAvg) + (weight * P_norm);
+      updates[`p_warm_norm_avg_${axle}`] = Math.round(newAvg * 100) / 100;
+    };
+
+    if (hotFrontPsi != null) {
+      runApproachA(hotFrontPsi, coldFrontPsi,
+        current.p_warm_norm_avg_front, current.p_warm_session_count ?? 0, 'front');
+    }
+    if (hotRearPsi != null) {
+      runApproachA(hotRearPsi, coldRearPsi,
+        current.p_warm_norm_avg_rear, current.p_warm_session_count ?? 0, 'rear');
+    }
+    if (hotFrontPsi != null || hotRearPsi != null) {
+      updates['p_warm_session_count'] = (current.p_warm_session_count ?? 0) + 1;
+    }
+
+    // ── Approach B: T_cooldown back-calculation ────────────────────────────
+    const T_hot_ideal_K =
+      tireTarget?.target_temp_min_c != null && tireTarget?.target_temp_max_c != null
+        ? cToKelvin((tireTarget.target_temp_min_c + tireTarget.target_temp_max_c) / 2)
+        : null;
+
+    const runApproachB = (
+      hotPsi: number,
+      coldPsi: number,
+      storedCooldown: number | null | undefined,
+      sessionCount: number,
+      axle: 'front' | 'rear'
+    ) => {
+      if (T_hot_ideal_K == null) return;
+      if (hotPsi < 10 || hotPsi > 80) return;
+      const P_cold_abs      = coldPsi + ATM;
+      const P_warm_abs      = hotPsi  + ATM;
+      const T_implied_air_K = T_cold_K * (P_warm_abs / P_cold_abs);
+      const sessionCooldown = T_hot_ideal_K - T_implied_air_K;
+      if (sessionCooldown < 5 || sessionCooldown > 80) return;
+      const weight      = Math.max(0.15, 0.40 - (sessionCount * 0.05));
+      const newCooldown = storedCooldown == null
+        ? sessionCooldown
+        : ((1 - weight) * storedCooldown) + (weight * sessionCooldown);
+      updates[`t_cooldown_${axle}_c`] = Math.round(newCooldown * 100) / 100;
+    };
+
+    if (hotFrontPsi != null && pyroFrontAvgC != null) {
+      runApproachB(hotFrontPsi, coldFrontPsi,
+        current.t_cooldown_front_c, current.t_cooldown_session_count ?? 0, 'front');
+    }
+    if (hotRearPsi != null && pyroRearAvgC != null) {
+      runApproachB(hotRearPsi, coldRearPsi,
+        current.t_cooldown_rear_c, current.t_cooldown_session_count ?? 0, 'rear');
+    }
+    if (
+      (hotFrontPsi != null && pyroFrontAvgC != null) ||
+      (hotRearPsi  != null && pyroRearAvgC  != null)
+    ) {
+      updates['t_cooldown_session_count'] = (current.t_cooldown_session_count ?? 0) + 1;
+    }
+
+    if (Object.keys(updates).length === 0) return;
+
+    await supabaseClient
+      .from('garage_tire_sets')
+      .update(updates)
+      .eq('id', garageTireSetId);
+
+  } catch {
+    // Learning is best-effort — never surface errors to the user
+  }
+}
+
+
 export function isHotInRange(hotPsi: number, target: TireTarget): boolean {
   return hotPsi >= target.target_hot_min_psi && hotPsi <= target.target_hot_max_psi;
 }

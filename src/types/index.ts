@@ -26,6 +26,14 @@ export interface GarageTireSet {
   created_at: string;
   tire_front?: Tire;
   tire_rear?: Tire;
+  // Approach A — pressure-only warm prediction learning
+  p_warm_norm_avg_front?: number | null;
+  p_warm_norm_avg_rear?:  number | null;
+  p_warm_session_count?:  number;
+  // Approach B — pyrometer warm prediction learning
+  t_cooldown_front_c?:       number | null;
+  t_cooldown_rear_c?:        number | null;
+  t_cooldown_session_count?: number;
 }
 
 // ── User settings (stored in AsyncStorage) ───────────────────────────────────
@@ -211,6 +219,15 @@ export interface ActiveEvent {
   session_type:   SessionType;
   started_at:     string;
   tire_set_name?: string;
+  // Tyre set learned warm prediction data — fetched once at event start
+  // in EventSetupScreen and carried through all logging screens via context.
+  garage_tire_set_id?:       string;
+  p_warm_norm_avg_front?:    number | null;
+  p_warm_norm_avg_rear?:     number | null;
+  p_warm_session_count?:     number;
+  t_cooldown_front_c?:       number | null;
+  t_cooldown_rear_c?:        number | null;
+  t_cooldown_session_count?: number;
 }
 
 // Persisted to AsyncStorage when cold pressures are saved.
@@ -229,10 +246,14 @@ export interface OpenSession {
   cold_fr_temp_c?: number;
   cold_rl_temp_c?: number;
   cold_rr_temp_c?: number;
-  predicted_hot_fl: number; // gas law prediction, rounded to 0.5
+  predicted_hot_fl: number;  // ideal on-track gas law prediction, rounded to 0.5
   predicted_hot_fr: number;
   predicted_hot_rl: number;
   predicted_hot_rr: number;
+  predicted_warm_fl: number; // expected paddock reading — learned or gas law fallback
+  predicted_warm_fr: number;
+  predicted_warm_rl: number;
+  predicted_warm_rr: number;
   saved_at: string;          // ISO timestamp shown as "X min ago" on banner
   ambient_temp_c?: number;
   ambient_session_start?: number;

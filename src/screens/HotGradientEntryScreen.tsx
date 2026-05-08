@@ -11,6 +11,7 @@ import { useEvent } from '../hooks/useEventContext';
 import { useSettings } from '../hooks/useSettings';
 import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
 import { supabase } from '../lib/supabase';
+import { updateWarmLearning } from '../lib/recommendations';
 import { v4 as uuidv4 } from 'uuid';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ type Props = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function HotGradientEntryScreen({ navigation }: Props) {
-  const { activeEvent, openSession, setLastEntry, incrementSession, clearOpenSession } = useEvent();
+  const { activeEvent, setActiveEvent, openSession, setLastEntry, incrementSession, clearOpenSession } = useEvent();
   const { weather } = useLocationAndWeather();
   const { displayPressure, pressureUnit, displayTemp, tempUnit, inputToPsi, inputToC, settings } = useSettings();
   const hotStartRef = useRef<number>(Date.now());
@@ -103,10 +104,10 @@ export default function HotGradientEntryScreen({ navigation }: Props) {
   const seedPsi = useCallback((c: Corner): number => {
     if (!openSession) return PSI_SEEDS[c];
     const map: Record<Corner, number> = {
-      fl: openSession.predicted_hot_fl,
-      fr: openSession.predicted_hot_fr,
-      rr: openSession.predicted_hot_rr,
-      rl: openSession.predicted_hot_rl,
+      fl: openSession.predicted_warm_fl ?? openSession.predicted_hot_fl,
+      fr: openSession.predicted_warm_fr ?? openSession.predicted_hot_fr,
+      rr: openSession.predicted_warm_rr ?? openSession.predicted_hot_rr,
+      rl: openSession.predicted_warm_rl ?? openSession.predicted_hot_rl,
     };
     return map[c];
   }, [openSession]);
@@ -262,6 +263,76 @@ export default function HotGradientEntryScreen({ navigation }: Props) {
 
     setLastEntry({ ...entry, id: entryId });
     incrementSession();
+
+    // Update learned warm pressure model — Tier 2 uses mid temp per corner avg
+    const pyroFront = (() => {
+      const vals = [
+        entry.tyre_temp_hot_fl_mid_c ?? entry.tyre_temp_hot_fl_c,
+        entry.tyre_temp_hot_fr_mid_c ?? entry.tyre_temp_hot_fr_c,
+      ].filter((v): v is number => v != null);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    })();
+    const pyroRear = (() => {
+      const vals = [
+        entry.tyre_temp_hot_rl_mid_c ?? entry.tyre_temp_hot_rl_c,
+        entry.tyre_temp_hot_rr_mid_c ?? entry.tyre_temp_hot_rr_c,
+      ].filter((v): v is number => v != null);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    })();
+
+    // Update learned warm pressure model using values already in activeEvent
+    if (activeEvent.garage_tire_set_id) {
+      const tireTargetHGE = (activeEvent.t_cooldown_front_c != null ||
+        activeEvent.p_warm_norm_avg_front != null) ? {
+          target_temp_min_c: null as number | null,
+          target_temp_max_c: null as number | null,
+        } : null;
+      // Fetch tire_targets for Approach B — lightweight, tire-scoped
+      supabase
+        .from('tire_targets')
+        .select('target_temp_min_c, target_temp_max_c')
+        .eq('tire_id', activeEvent.tire_front.id)
+        .maybeSingle()
+        .then(async ({ data: ttData }) => {
+          await updateWarmLearning(
+            supabase,
+            activeEvent.garage_tire_set_id!,
+            entry.ambient_temp_c ?? 20,
+            entry.cold_front_psi ?? 0, entry.hot_front_psi ?? null, pyroFront,
+            entry.cold_rear_psi  ?? 0, entry.hot_rear_psi  ?? null, pyroRear,
+            {
+              p_warm_norm_avg_front:    activeEvent.p_warm_norm_avg_front,
+              p_warm_norm_avg_rear:     activeEvent.p_warm_norm_avg_rear,
+              p_warm_session_count:     activeEvent.p_warm_session_count,
+              t_cooldown_front_c:       activeEvent.t_cooldown_front_c,
+              t_cooldown_rear_c:        activeEvent.t_cooldown_rear_c,
+              t_cooldown_session_count: activeEvent.t_cooldown_session_count,
+            },
+            ttData ?? null,
+          );
+          // Refresh activeEvent with updated learned values for next session
+          const { data: refreshed } = await supabase
+            .from('garage_tire_sets')
+            .select(`
+              p_warm_norm_avg_front, p_warm_norm_avg_rear, p_warm_session_count,
+              t_cooldown_front_c, t_cooldown_rear_c, t_cooldown_session_count
+            `)
+            .eq('id', activeEvent.garage_tire_set_id!)
+            .single();
+          if (refreshed) {
+            setActiveEvent({
+              ...activeEvent,
+              p_warm_norm_avg_front:     refreshed.p_warm_norm_avg_front,
+              p_warm_norm_avg_rear:      refreshed.p_warm_norm_avg_rear,
+              p_warm_session_count:      refreshed.p_warm_session_count,
+              t_cooldown_front_c:        refreshed.t_cooldown_front_c,
+              t_cooldown_rear_c:         refreshed.t_cooldown_rear_c,
+              t_cooldown_session_count:  refreshed.t_cooldown_session_count,
+            });
+          }
+        });
+    }
+
     await clearOpenSession();
     setSubmitting(false);
 
@@ -481,8 +552,8 @@ export default function HotGradientEntryScreen({ navigation }: Props) {
           {[
             { label: 'Cold F',     val: displayPressure(openSession.cold_front_psi) },
             { label: 'Cold R',     val: displayPressure(openSession.cold_rear_psi) },
-            { label: 'Pred FL/FR', val: displayPressure(openSession.predicted_hot_fl), warm: true },
-            { label: 'Pred RL/RR', val: displayPressure(openSession.predicted_hot_rl), warm: true },
+            { label: 'Pred FL/FR', val: displayPressure(openSession.predicted_warm_fl ?? openSession.predicted_hot_fl), warm: true },
+            { label: 'Pred RL/RR', val: displayPressure(openSession.predicted_warm_rl ?? openSession.predicted_hot_rl), warm: true },
             ...(weather ? [{ label: 'Ambient', val: `${displayTemp(weather.temp_c)}${tempUnit()}` }] : []),
           ].map(({ label, val, warm }: any) => (
             <View key={label} style={styles.refChip}>

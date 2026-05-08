@@ -10,7 +10,7 @@ import { NumPad } from '../components/NumPad';
 import { useEvent } from '../hooks/useEventContext';
 import { useSettings } from '../hooks/useSettings';
 import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
-import { predictHotRounded } from '../lib/recommendations';
+import { predictHotRounded, predictWarmPressure, updateWarmLearning } from '../lib/recommendations';
 import { supabase } from '../lib/supabase';
 import { OpenSession } from '../types';
 import 'react-native-get-random-values';
@@ -50,9 +50,31 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
 
   // All hooks at top level
   const {
-    activeEvent, openSession, setOpenSession,
+    activeEvent, setActiveEvent, openSession, setOpenSession,
     clearOpenSession, setLastEntry, incrementSession,
   } = useEvent();
+
+  const [tireTargetDataCR, setTireTargetDataCR] = useState<{
+    target_temp_min_c?: number | null;
+    target_temp_max_c?: number | null;
+  } | null>(null);
+
+  // Learned warm pressure values — read from activeEvent (fetched once in EventSetupScreen)
+  const learnedWarmCR = {
+    garageTireSetId:       activeEvent?.garage_tire_set_id       ?? null,
+    pWarmNormAvgFront:     activeEvent?.p_warm_norm_avg_front    ?? null,
+    pWarmNormAvgRear:      activeEvent?.p_warm_norm_avg_rear     ?? null,
+    pWarmSessionCount:     activeEvent?.p_warm_session_count     ?? 0,
+    tCooldownFront:        activeEvent?.t_cooldown_front_c       ?? null,
+    tCooldownRear:         activeEvent?.t_cooldown_rear_c        ?? null,
+    tCooldownSessionCount: activeEvent?.t_cooldown_session_count ?? 0,
+    p_warm_norm_avg_front: activeEvent?.p_warm_norm_avg_front,
+    p_warm_norm_avg_rear:  activeEvent?.p_warm_norm_avg_rear,
+    p_warm_session_count:  activeEvent?.p_warm_session_count,
+    t_cooldown_front_c:    activeEvent?.t_cooldown_front_c,
+    t_cooldown_rear_c:     activeEvent?.t_cooldown_rear_c,
+    t_cooldown_session_count: activeEvent?.t_cooldown_session_count,
+  };
   const { weather } = useLocationAndWeather();
   const { pressureUnit, tempUnit, inputToPsi, inputToC, settings } = useSettings();
 
@@ -137,6 +159,7 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
       if (targetData?.target_temp_min_c != null && targetData?.target_temp_max_c != null) {
         tyreTempC = (targetData.target_temp_min_c + targetData.target_temp_max_c) / 2;
       }
+      setTireTargetDataCR(targetData ?? null);
     } catch {}
 
     // Per-corner prediction: cold tyre temp (or ambient) is the starting temp.
@@ -164,6 +187,10 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
       predicted_hot_fr: predictForCorner(coldFR, 'fr'),
       predicted_hot_rl: predictForCorner(coldRL, 'rl'),
       predicted_hot_rr: predictForCorner(coldRR, 'rr'),
+      predicted_warm_fl: predictWarmPressure(coldFL, ambientC ?? 20, tireTargetDataCR, learnedWarmCR.tCooldownFront, learnedWarmCR.tCooldownSessionCount, learnedWarmCR.pWarmNormAvgFront, learnedWarmCR.pWarmSessionCount),
+      predicted_warm_fr: predictWarmPressure(coldFR, ambientC ?? 20, tireTargetDataCR, learnedWarmCR.tCooldownFront, learnedWarmCR.tCooldownSessionCount, learnedWarmCR.pWarmNormAvgFront, learnedWarmCR.pWarmSessionCount),
+      predicted_warm_rl: predictWarmPressure(coldRL, ambientC ?? 20, tireTargetDataCR, learnedWarmCR.tCooldownRear,  learnedWarmCR.tCooldownSessionCount, learnedWarmCR.pWarmNormAvgRear,  learnedWarmCR.pWarmSessionCount),
+      predicted_warm_rr: predictWarmPressure(coldRR, ambientC ?? 20, tireTargetDataCR, learnedWarmCR.tCooldownRear,  learnedWarmCR.tCooldownSessionCount, learnedWarmCR.pWarmNormAvgRear,  learnedWarmCR.pWarmSessionCount),
       saved_at:         new Date().toISOString(),
       ambient_temp_c:   ambientC,
       ambient_source:   ambientC !== undefined
@@ -240,6 +267,51 @@ export default function CornerReviewScreen({ navigation, route }: Props) {
 
     setLastEntry({ ...entry, id: entryId });
     incrementSession();
+
+    // Update learned warm pressure model
+    if (learnedWarmCR.garageTireSetId) {
+      const pyroFront = (entry.tyre_temp_hot_fl_c != null && entry.tyre_temp_hot_fr_c != null)
+        ? (entry.tyre_temp_hot_fl_c + entry.tyre_temp_hot_fr_c) / 2
+        : entry.tyre_temp_hot_fl_c ?? entry.tyre_temp_hot_fr_c ?? null;
+      const pyroRear = (entry.tyre_temp_hot_rl_c != null && entry.tyre_temp_hot_rr_c != null)
+        ? (entry.tyre_temp_hot_rl_c + entry.tyre_temp_hot_rr_c) / 2
+        : entry.tyre_temp_hot_rl_c ?? entry.tyre_temp_hot_rr_c ?? null;
+      await updateWarmLearning(
+        supabase,
+        learnedWarmCR.garageTireSetId,
+        entry.ambient_temp_c ?? 20,
+        entry.cold_front_psi ?? 0,
+        entry.hot_front_psi ?? null,
+        pyroFront,
+        entry.cold_rear_psi ?? 0,
+        entry.hot_rear_psi ?? null,
+        pyroRear,
+        learnedWarmCR,
+        tireTargetDataCR,
+      );
+      // Refresh activeEvent with updated learned values so subsequent sessions
+      // within the same event pass correct current values to updateWarmLearning
+      const { data: refreshed } = await supabase
+        .from('garage_tire_sets')
+        .select(`
+          p_warm_norm_avg_front, p_warm_norm_avg_rear, p_warm_session_count,
+          t_cooldown_front_c, t_cooldown_rear_c, t_cooldown_session_count
+        `)
+        .eq('id', activeEvent.garage_tire_set_id!)
+        .single();
+      if (refreshed && activeEvent) {
+        setActiveEvent({
+          ...activeEvent,
+          p_warm_norm_avg_front:     refreshed.p_warm_norm_avg_front,
+          p_warm_norm_avg_rear:      refreshed.p_warm_norm_avg_rear,
+          p_warm_session_count:      refreshed.p_warm_session_count,
+          t_cooldown_front_c:        refreshed.t_cooldown_front_c,
+          t_cooldown_rear_c:         refreshed.t_cooldown_rear_c,
+          t_cooldown_session_count:  refreshed.t_cooldown_session_count,
+        });
+      }
+    }
+
     await clearOpenSession();
     setSubmitting(false);
 

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, TextInput, Animated,
+  StyleSheet, TextInput, Animated, KeyboardAvoidingView, Platform, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { CommonActions } from '@react-navigation/native';
 import { colors, typography, spacing, radius, globalStyles } from '../lib/theme';
 import { ContextPill } from '../components/ContextPill';
 import { useEvent } from '../hooks/useEventContext';
@@ -37,6 +38,8 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
 
   // ── Success banner ────────────────────────────────────────────────────────
   const bannerOpacity = useRef(new Animated.Value(0)).current;
+  const scrollRef     = useRef<ScrollView>(null);
+  const ambientRef    = useRef<View>(null);
   const [showBanner, setShowBanner] = useState(false);
 
   useEffect(() => {
@@ -54,6 +57,11 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
   const [month, setMonth] = useState(today.getMonth());
   const [day,   setDay]   = useState(today.getDate());
   const [year,  setYear]  = useState(today.getFullYear());
+
+  // ── Time of day state ────────────────────────────────────────────────────
+  const [hour,   setHour]   = useState(9);   // 1–12
+  const [minute, setMinute] = useState(0);   // 0, 10, 20 ... 50
+  const [ampm,   setAmpm]   = useState<'AM' | 'PM'>('AM');
 
   // ── Track state ───────────────────────────────────────────────────────────
   const [allTracks,         setAllTracks]         = useState<Track[]>([]);
@@ -100,7 +108,9 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
   }
 
   function historicDateISO(): string {
-    const d = new Date(year, month, day, 12, 0, 0);
+    let h = hour % 12;
+    if (ampm === 'PM') h += 12;
+    const d = new Date(year, month, day, h, minute, 0);
     return d.toISOString();
   }
 
@@ -146,7 +156,9 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={globalStyles.screen}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -162,7 +174,18 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={typography.heading}>Log past session</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => {
+            if (prefilled) {
+              // Coming from completed hot session — reset to garage to avoid
+              // navigating back into the stale session flow
+              navigation.dispatch(CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'GarageTab' }],
+              }));
+            } else {
+              navigation.goBack();
+            }
+          }}>
             <Text style={[typography.caption, { color: colors.accent }]}>Cancel</Text>
           </TouchableOpacity>
         </View>
@@ -220,6 +243,60 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
           </View>
         </View>
 
+        {/* ── Time of day ────────────────────────────────────────────────── */}
+        <View style={[globalStyles.card, { marginBottom: spacing.md }]}>
+          <View style={styles.timeRow}>
+
+            {/* Hour stepper — no label */}
+            <TouchableOpacity style={styles.timeArrow} onPress={() => {
+              if (hour <= 1) { setHour(12); setAmpm(a => a === 'AM' ? 'PM' : 'AM'); }
+              else setHour(h => h - 1);
+            }}>
+              <Text style={styles.dateArrowText}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.timeVal}>{String(hour).padStart(2, '0')}</Text>
+            <TouchableOpacity style={styles.timeArrow} onPress={() => {
+              if (hour >= 12) { setHour(1); setAmpm(a => a === 'AM' ? 'PM' : 'AM'); }
+              else setHour(h => h + 1);
+            }}>
+              <Text style={styles.dateArrowText}>›</Text>
+            </TouchableOpacity>
+
+            {/* Separator */}
+            <Text style={styles.timeSep}>:</Text>
+
+            {/* Minute stepper — 10-minute increments */}
+            <TouchableOpacity style={styles.timeArrow} onPress={() =>
+              setMinute(m => m === 0 ? 50 : m - 10)
+            }>
+              <Text style={styles.dateArrowText}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.timeVal}>{String(minute).padStart(2, '0')}</Text>
+            <TouchableOpacity style={styles.timeArrow} onPress={() =>
+              setMinute(m => m === 50 ? 0 : m + 10)
+            }>
+              <Text style={styles.dateArrowText}>›</Text>
+            </TouchableOpacity>
+
+            {/* AM/PM toggle */}
+            <View style={styles.ampmGroup}>
+              <TouchableOpacity
+                style={[styles.ampmBtn, ampm === 'AM' && styles.ampmBtnActive]}
+                onPress={() => setAmpm('AM')}
+              >
+                <Text style={[styles.ampmText, ampm === 'AM' && styles.ampmTextActive]}>AM</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ampmBtn, ampm === 'PM' && styles.ampmBtnActive]}
+                onPress={() => setAmpm('PM')}
+              >
+                <Text style={[styles.ampmText, ampm === 'PM' && styles.ampmTextActive]}>PM</Text>
+              </TouchableOpacity>
+            </View>
+
+          </View>
+        </View>
+
         {/* ── Track ──────────────────────────────────────────────────────── */}
         <Text style={globalStyles.sectionLabel}>Track</Text>
         <View style={globalStyles.card}>
@@ -230,6 +307,19 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
             onFocus={() => setTrackDropdownOpen(true)}
             placeholder="Search by name or state…"
             placeholderTextColor={colors.textMuted}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              // Select top result on keyboard dismiss if one exists
+              const top = filteredTracks[0];
+              if (top) {
+                setSelectedTrack(top);
+                setSelectedConfig(null);
+                setTrackDropdownOpen(false);
+                setTrackSearch('');
+              } else {
+                setTrackDropdownOpen(false);
+              }
+            }}
           />
 
           {selectedTrack && !trackDropdownOpen && (
@@ -252,6 +342,7 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
                   key={t.id}
                   style={styles.dropdownOption}
                   onPress={() => {
+                    Keyboard.dismiss();
                     setSelectedTrack(t);
                     setSelectedConfig(null);
                     setTrackDropdownOpen(false);
@@ -341,7 +432,10 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
         <Text style={[globalStyles.sectionLabel, { marginTop: spacing.lg }]}>
           Ambient temperature (optional)
         </Text>
-        <View style={[globalStyles.card, { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }]}>
+        <View
+          ref={ambientRef}
+          style={[globalStyles.card, { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }]}
+        >
           <TextInput
             style={[styles.ambientInput]}
             value={ambientTemp}
@@ -350,6 +444,15 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
             placeholderTextColor={colors.textMuted}
             keyboardType="numeric"
             maxLength={5}
+            onFocus={() => {
+              setTimeout(() => {
+                ambientRef.current?.measureLayout(
+                  scrollRef.current as any,
+                  (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                  () => {}
+                );
+              }, 150);
+            }}
           />
           <Text style={[typography.body, { color: colors.textMuted }]}>
             °{settings.temperature_unit.toUpperCase()}
@@ -371,6 +474,7 @@ export default function HistoricEventSetupScreen({ navigation, route }: Props) {
         </TouchableOpacity>
 
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -419,11 +523,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgHighlight, borderRadius: radius.sm,
     borderWidth: 0.5, borderColor: colors.border,
   },
+  timeArrow: {
+    width: 24, height: 30, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.bgHighlight, borderRadius: radius.sm,
+    borderWidth: 0.5, borderColor: colors.border,
+  },
   dateArrowText: { fontSize: 18, color: colors.textSecondary, lineHeight: 20 },
   dateVal: {
     fontSize: 16, fontWeight: '500', color: colors.textPrimary,
     fontVariant: ['tabular-nums'] as any,
     minWidth: 38, textAlign: 'center',
+  },
+  timeVal: {
+    fontSize: 16, fontWeight: '500', color: colors.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    minWidth: 26, textAlign: 'center',
   },
 
   // Track search
@@ -483,6 +597,33 @@ const styles = StyleSheet.create({
     fontSize: 18, fontWeight: '500', color: colors.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
+
+  // Time of day
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  timeSep: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.textMuted,
+    marginHorizontal: 0,
+  },
+  ampmGroup: {
+    flexDirection: 'row',
+    gap: 4,
+    marginLeft: 4,
+  },
+  ampmBtn: {
+    paddingHorizontal: 8, paddingVertical: 6,
+    borderRadius: radius.sm, borderWidth: 0.5,
+    borderColor: colors.border, backgroundColor: colors.bgHighlight,
+  },
+  ampmBtnActive: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
+  ampmText: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  ampmTextActive: { color: colors.accent },
 
   // Continue button
   continueBtn: {

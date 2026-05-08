@@ -199,6 +199,11 @@ export default function GarageScreen({ navigation, route }: Props) {
     return (
       <View style={styles.cardWrapper}>
         <View style={styles.card}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: spacing.md }}
+          >
 
           {/* Header */}
           <View style={styles.cardHeader}>
@@ -229,8 +234,7 @@ export default function GarageScreen({ navigation, route }: Props) {
 
           <View style={styles.divider} />
 
-          {/* Tire set dropdown */}
-          <Text style={styles.sectionLabel}>Tire set</Text>
+          {/* Tire set — compact inline row */}
           {tireSets.length === 0 ? (
             <TouchableOpacity
               style={styles.addTyrePrompt}
@@ -240,17 +244,18 @@ export default function GarageScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           ) : (
             <>
-              <TouchableOpacity
-                style={[styles.dropdown, ddOpen && styles.dropdownOpen]}
-                onPress={() => setOpenDropdownId(ddOpen ? null : gv.id)}
-              >
-                <Text style={styles.dropdownVal}>
-                  {selectedTs
-                    ? selectedTs.name
-                    : 'Select tire set'}
-                </Text>
-                <Text style={styles.dropdownArrow}>{ddOpen ? '▲' : '▼'}</Text>
-              </TouchableOpacity>
+              <View style={styles.tireSetRow}>
+                <Text style={styles.tireSetLabel}>Tire set</Text>
+                <TouchableOpacity
+                  style={[styles.dropdown, styles.dropdownInline, ddOpen && styles.dropdownOpen]}
+                  onPress={() => setOpenDropdownId(ddOpen ? null : gv.id)}
+                >
+                  <Text style={styles.dropdownVal}>
+                    {selectedTs ? selectedTs.name : 'Select tire set'}
+                  </Text>
+                  <Text style={styles.dropdownArrow}>{ddOpen ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+              </View>
 
               {ddOpen && (
                 <View style={styles.dropdownOptions}>
@@ -278,17 +283,6 @@ export default function GarageScreen({ navigation, route }: Props) {
               )}
             </>
           )}
-
-          {/* Notes */}
-          {gv.notes ? (
-            <>
-              <View style={styles.divider} />
-              <Text style={styles.sectionLabel}>Notes</Text>
-              <View style={styles.notesBox}>
-                <Text style={styles.notesText}>{gv.notes}</Text>
-              </View>
-            </>
-          ) : null}
 
           {/* Silhouette with edit badge */}
           <SilhouetteBanner
@@ -363,6 +357,18 @@ export default function GarageScreen({ navigation, route }: Props) {
             <Text style={styles.historicBtnText}>+ Log past session</Text>
           </TouchableOpacity>
 
+          {/* Notes — below actions so primary buttons always visible first */}
+          {gv.notes ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.sectionLabel}>Notes</Text>
+              <View style={styles.notesBox}>
+                <Text style={styles.notesText}>{gv.notes}</Text>
+              </View>
+            </>
+          ) : null}
+
+          </ScrollView>
         </View>
       </View>
     );
@@ -475,8 +481,17 @@ export default function GarageScreen({ navigation, route }: Props) {
       <AddVehicleModal
         visible={addModalVisible}
         userId={userId}
+        navigation={navigation}
         onClose={() => setAddModalVisible(false)}
-        onAdded={() => { setAddModalVisible(false); fetchGarage(); }}
+        onAdded={(newVehicle) => {
+          setAddModalVisible(false);
+          // Navigate immediately so modal opens without waiting for fetchGarage
+          navigation.navigate('EditGarageVehicle', {
+            garageVehicle:     newVehicle,
+            autoOpenTyreModal: true,
+          });
+          fetchGarage(); // refresh in background
+        }}
       />
 
     </SafeAreaView>
@@ -486,12 +501,13 @@ export default function GarageScreen({ navigation, route }: Props) {
 // ── Add Vehicle Modal ─────────────────────────────────────────────────────────
 
 function AddVehicleModal({
-  visible, userId, onClose, onAdded,
+  visible, userId, onClose, onAdded, navigation,
 }: {
   visible: boolean;
   userId: string | null;
   onClose: () => void;
-  onAdded: () => void;
+  onAdded: (newVehicle: import('../types').GarageVehicle) => void;
+  navigation: any;
 }) {
   const [search, setSearch]     = useState('');
   const [selected, setSelected] = useState<Vehicle | null>(null);
@@ -501,6 +517,38 @@ function AddVehicleModal({
   const [userYear, setUserYear] = useState('');
   const userYearRef = useRef<TextInput>(null);
   const { displayPressure, pressureUnit } = useSettings();
+
+  // ── Fuzzy search ────────────────────────────────────────────────────────────
+  const [aliasApplied, setAliasApplied] = useState<string | null>(null);
+  const [didYouMean,   setDidYouMean]   = useState<string[]>([]);
+
+  const MAKE_ALIASES: Record<string, string> = {
+    'porche': 'porsche', 'porshe': 'porsche',
+    'vw': 'volkswagen', 'volkswaagen': 'volkswagen', 'vokswagen': 'volkswagen',
+    'chevy': 'chevrolet', 'chev': 'chevrolet',
+    'merc': 'mercedes-benz', 'mercedes': 'mercedes-benz',
+    'bmw': 'bmw', 'bimmer': 'bmw',
+    'subie': 'subaru', 'soobaru': 'subaru',
+    'mazada': 'mazda', 'mazdda': 'mazda',
+    'mitsu': 'mitsubishi',
+    'lambo': 'lamborghini',
+    'alfa': 'alfa romeo',
+  };
+
+  function levenshtein(a: string, b: string): number {
+    const m = a.length, n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i-1] === b[j-1]
+          ? dp[i-1][j-1]
+          : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    return dp[m][n];
+  }
+
+  const allMakes = [...new Set(vehicles.map(v => v.make.toLowerCase()))];
 
   useEffect(() => {
     supabase
@@ -512,18 +560,71 @@ function AddVehicleModal({
       });
   }, []);
 
-  const filtered = vehicles.filter(v => {
-    const q = search.toLowerCase().trim();
-    const yearTyped = parseInt(q);
-    if (!isNaN(yearTyped)) {
-      const inRange = yearTyped >= parseInt(`${v.year_start}`) &&
-        yearTyped <= parseInt(`${v.year_end ?? v.year_start}`);
-      if (inRange) return true;
+  const { filtered, resolvedQuery } = (() => {
+    const raw = search.toLowerCase().trim();
+    if (!raw) return { filtered: [], resolvedQuery: raw };
+
+    // Layer 1: alias lookup
+    const words = raw.split(/\s+/);
+    let resolvedQuery = raw;
+    let alias: string | null = null;
+    for (const word of words) {
+      if (MAKE_ALIASES[word]) {
+        alias = MAKE_ALIASES[word];
+        resolvedQuery = raw.replace(word, alias);
+        break;
+      }
     }
-    return `${v.year_start} ${v.make} ${v.model} ${v.trim}`
-      .toLowerCase()
-      .includes(q);
-  });
+
+    const yearTyped = parseInt(raw);
+    const byYear = !isNaN(yearTyped)
+      ? vehicles.filter(v =>
+          yearTyped >= parseInt(`${v.year_start}`) &&
+          yearTyped <= parseInt(`${v.year_end ?? v.year_start}`)
+        )
+      : [];
+
+    const byText = vehicles.filter(v =>
+      `${v.year_start} ${v.make} ${v.model} ${v.trim}`
+        .toLowerCase()
+        .includes(resolvedQuery)
+    );
+
+    const result = byYear.length > 0 ? byYear : byText;
+
+    // Layer 2: levenshtein on make names if still no results
+    let suggestions: string[] = [];
+    if (result.length === 0 && !isNaN(yearTyped) === false) {
+      const firstWord = words[0];
+      suggestions = allMakes
+        .filter(m => levenshtein(firstWord, m) <= 2 && m !== firstWord)
+        .sort((a, b) => levenshtein(firstWord, a) - levenshtein(firstWord, b))
+        .slice(0, 3)
+        .map(m => m.charAt(0).toUpperCase() + m.slice(1));
+    }
+
+    return { filtered: result, resolvedQuery };
+  })();
+
+  // Sync alias and suggestions into state
+  const { alias: computedAlias, suggestions: computedSuggestions } = (() => {
+    const raw = search.toLowerCase().trim();
+    if (!raw) return { alias: null, suggestions: [] };
+    const words = raw.split(/\s+/);
+    let alias: string | null = null;
+    for (const word of words) {
+      if (MAKE_ALIASES[word]) { alias = MAKE_ALIASES[word]; break; }
+    }
+    const firstWord = words[0] ?? '';
+    const suggestions = filtered.length === 0
+      ? allMakes
+          .filter(m => levenshtein(firstWord, m) <= 2 && m !== firstWord)
+          .sort((a, b) => levenshtein(firstWord, a) - levenshtein(firstWord, b))
+          .slice(0, 3)
+          .map(m => m.charAt(0).toUpperCase() + m.slice(1))
+      : [];
+    return { alias, suggestions };
+  })();
 
   async function handleSave() {
     if (!selected || !userId) return;
@@ -556,8 +657,17 @@ function AddVehicleModal({
 
     setSaving(false);
     if (!error) {
+      // Fetch the newly created garage_vehicle to pass back for navigation
+      const { data: newVehicle } = await supabase
+        .from('garage_vehicles')
+        .select('*, vehicle:vehicles(*), tire_sets:garage_tire_sets(*)')
+        .eq('user_id', userId!)
+        .eq('vehicle_id', selected.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
       setSearch(''); setSelected(null); setNickname(''); setUserYear('');
-      onAdded();
+      if (newVehicle) onAdded(newVehicle as any);
     }
   }
 
@@ -579,6 +689,33 @@ function AddVehicleModal({
           placeholderTextColor={colors.textMuted}
         />
 
+        {/* Stage 1 — alias suggestion */}
+        {search.trim().length > 0 && computedAlias && filtered.length > 0 && (
+          <View style={styles.aliasBanner}>
+            <Text style={styles.aliasBannerText}>
+              Showing results for <Text style={{ color: colors.accent }}>{computedAlias.charAt(0).toUpperCase() + computedAlias.slice(1)}</Text>
+            </Text>
+          </View>
+        )}
+
+        {/* Stage 2 — levenshtein suggestions */}
+        {search.trim().length > 0 && filtered.length === 0 && computedSuggestions.length > 0 && (
+          <View style={styles.didYouMean}>
+            <Text style={styles.didYouMeanLabel}>Did you mean?</Text>
+            <View style={styles.didYouMeanChips}>
+              {computedSuggestions.map(s => (
+                <TouchableOpacity
+                  key={s}
+                  style={styles.didYouMeanChip}
+                  onPress={() => setSearch(s)}
+                >
+                  <Text style={styles.didYouMeanChipText}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
         <ScrollView style={{ flex: 1 }}>
           {filtered.map(v => (
             <TouchableOpacity
@@ -597,7 +734,42 @@ function AddVehicleModal({
               </Text>
             </TouchableOpacity>
           ))}
+
+          {/* Stage 3 — true no results */}
+          {search.trim().length > 0 && filtered.length === 0 && computedSuggestions.length === 0 && (
+            <View style={styles.noResults}>
+              <Text style={styles.noResultsTitle}>No results for "{search}"</Text>
+              <Text style={styles.noResultsSub}>
+                We may not have this vehicle yet. Request it below — you can start logging immediately while we review.
+              </Text>
+            </View>
+          )}
+
+          {/* Always-present subtle footer when results exist */}
+          {search.trim().length > 0 && filtered.length > 0 && (
+            <TouchableOpacity
+              style={styles.requestFooter}
+              onPress={() => { onClose(); navigation.navigate('RequestVehicle', { prefillMake: search, userId }); }}
+            >
+              <Text style={styles.requestFooterText}>
+                Not seeing your car?{' '}
+                <Text style={{ color: colors.accent }}>Request it →</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
+
+        {/* Prominent request button — no results state */}
+        {search.trim().length > 0 && filtered.length === 0 && (
+          <TouchableOpacity
+            style={styles.requestBtn}
+            onPress={() => { onClose(); navigation.navigate('RequestVehicle', { prefillMake: search, userId }); }}
+          >
+            <Text style={styles.requestBtnText}>
+              Can't find your car? <Text style={{ color: colors.accent, fontWeight: '600' }}>Request it →</Text>
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {selected && (
           <View style={{ marginTop: spacing.md }}>
@@ -711,6 +883,24 @@ const styles = StyleSheet.create({
   oemLabel: { ...typography.caption, color: colors.textMuted },
   oemVal: { fontSize: 12, color: colors.textSecondary, fontVariant: ['tabular-nums'] as any },
   divider: { height: 0.5, backgroundColor: colors.border, marginVertical: spacing.sm },
+  tireSetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  tireSetLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    width: 56,
+    flexShrink: 0,
+  },
+  dropdownInline: {
+    flex: 1,
+    marginBottom: 0,
+  },
   sectionLabel: {
     fontSize: 10, fontWeight: '500', color: colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm,
@@ -784,6 +974,47 @@ const styles = StyleSheet.create({
     padding: spacing.md, fontSize: 14, color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
+  // Fuzzy search styles
+  aliasBanner: {
+    backgroundColor: 'rgba(0,163,255,0.07)',
+    borderWidth: 0.5, borderColor: 'rgba(0,163,255,0.2)',
+    borderRadius: radius.md, padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  aliasBannerText: { fontSize: 11, color: colors.textMuted },
+  didYouMean: {
+    backgroundColor: 'rgba(255,160,0,0.06)',
+    borderWidth: 0.5, borderColor: 'rgba(255,160,0,0.2)',
+    borderRadius: radius.md, padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  didYouMeanLabel: {
+    fontSize: 10, color: colors.textMuted,
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm,
+  },
+  didYouMeanChips: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  didYouMeanChip: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 0.5, borderColor: 'rgba(255,160,0,0.3)',
+    borderRadius: 16, paddingHorizontal: 12, paddingVertical: 4,
+  },
+  didYouMeanChipText: { fontSize: 12, color: '#ffa040' },
+  noResults: { alignItems: 'center', padding: spacing.xl, gap: spacing.sm },
+  noResultsTitle: { fontSize: 13, color: colors.textMuted, fontWeight: '500' },
+  noResultsSub: {
+    fontSize: 11, color: colors.textMuted,
+    textAlign: 'center', lineHeight: 17, opacity: 0.7,
+  },
+  requestFooter: { padding: spacing.md, alignItems: 'center' },
+  requestFooterText: { fontSize: 11, color: colors.textMuted },
+  requestBtn: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 0.5, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md,
+    alignItems: 'center', marginTop: spacing.sm,
+  },
+  requestBtnText: { fontSize: 13, color: colors.textSecondary },
+
   vehicleOption: {
     padding: spacing.md,
     borderBottomWidth: 0.5, borderBottomColor: colors.border,

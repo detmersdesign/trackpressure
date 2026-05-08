@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
   ScrollView, StyleSheet, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -138,9 +139,14 @@ export default function FeedbackScreen({ navigation }: Props) {
     ?? 'Not specific to a screen';
 
   // ── Render ────────────────────────────────────────────────────────────────
+  const scrollRef    = useRef<ScrollView>(null);
+  const inputViewRef = useRef<View>(null);
+
   return (
     <SafeAreaView style={globalStyles.screen}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -224,7 +230,17 @@ export default function FeedbackScreen({ navigation }: Props) {
         </View>
 
         {/* Message */}
-        <View style={styles.fieldWrap}>
+        <View
+          ref={inputViewRef}
+          style={styles.fieldWrap}
+          onLayout={() => {
+            inputViewRef.current?.measureLayout(
+              scrollRef.current as any,
+              (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+              () => {}
+            );
+          }}
+        >
           <Text style={styles.fieldLabel}>Your feedback</Text>
           <TextInput
             style={styles.textarea}
@@ -235,6 +251,15 @@ export default function FeedbackScreen({ navigation }: Props) {
             multiline
             maxLength={MAX_LENGTH}
             textAlignVertical="top"
+            onFocus={() => {
+              setTimeout(() => {
+                inputViewRef.current?.measureLayout(
+                  scrollRef.current as any,
+                  (_x, y) => { scrollRef.current?.scrollTo({ y, animated: true }); },
+                  () => {}
+                );
+              }, 150);
+            }}
           />
           <Text style={styles.charCount}>{message.length}/{MAX_LENGTH}</Text>
         </View>
@@ -297,6 +322,7 @@ export default function FeedbackScreen({ navigation }: Props) {
         )}
 
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

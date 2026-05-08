@@ -10,7 +10,7 @@ import { colors, typography, spacing, radius } from '../lib/theme';
 
 // Bump this string whenever you want the modal to show again.
 // Recommend matching your app version e.g. '1.4', '1.5' etc.
-const WHATS_NEW_VERSION = '1.3.1';
+const WHATS_NEW_VERSION = '1.4.0';
 
 // Set to true to include the feature screenshot, false to hide the image slot.
 const SHOW_IMAGE = true;
@@ -24,8 +24,10 @@ const STORAGE_KEY = 'trackpressure:last_seen_version';
 
 // ── Bullet items — edit freely each release ───────────────────────────────────
 const BULLETS: { text: string; icon: 'edit' | 'history' | 'keyboard' | 'chart' }[] = [
-  { icon: 'edit',    text: 'Log notes right after each session while details are still fresh' },
-  { icon: 'history', text: 'View and edit from session history — always private, never shared' },
+  { icon: 'chart',   text: 'Predicted pressures now learn from your sessions and improve over time' },
+  { icon: 'edit',    text: 'Can\'t find your car? Request it — start logging immediately while we add it' },
+  { icon: 'history', text: 'Cold-only sessions now flow through notes before your next run' },
+  { icon: 'keyboard', text: 'Historic sessions now support time of day for same-day separation' },
 ];
 
 // ── Icon shapes ───────────────────────────────────────────────────────────────
@@ -132,11 +134,11 @@ export default function WhatsNewModal() {
             <View style={styles.body}>
 
               {/* Title */}
-              <Text style={styles.title}>Driver notes, everywhere</Text>
+              <Text style={styles.title}>Smarter, smoother, more complete</Text>
 
               {/* Description */}
               <Text style={styles.desc}>
-                Your sessions now have a notes field — add observations while they're fresh and revisit them any time.
+                Pressure predictions that learn from you, a better garage experience, and a handful of workflow improvements for serious track day drivers.
               </Text>
 
               {/* Bullets */}

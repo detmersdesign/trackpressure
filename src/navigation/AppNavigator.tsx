@@ -27,6 +27,7 @@ import EditSilhouetteScreen     from '../screens/EditSilhouetteScreen';
 import SessionNotesScreen       from '../screens/SessionNotesScreen';
 import SessionDetailScreen      from '../screens/SessionDetailScreen';
 import iOSImageCropScreen       from '../screens/iOSImageCropScreen';
+import RequestVehicleScreen     from '../screens/RequestVehicleScreen';
 
 // ── Stack navigators ──────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ function GarageStackNav() {
       <GarageStack.Screen name="Garage"              component={GarageScreen} />
       <GarageStack.Screen name="Settings"            component={SettingsScreen} />
       <GarageStack.Screen name="EditGarageVehicle"   component={EditGarageVehicleScreen} />
+      <GarageStack.Screen name="RequestVehicle"      component={RequestVehicleScreen} />
       <GarageStack.Screen name="EditSilhouette"      component={EditSilhouetteScreen} />
       <GarageStack.Screen name="EventSetup"          component={EventSetupScreen} />
       <GarageStack.Screen name="HistoricEventSetup"  component={HistoricEventSetupScreen} />

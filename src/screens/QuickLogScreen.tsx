@@ -14,7 +14,7 @@ import { ContextPill } from '../components/ContextPill';
 import { DeltaBadge } from '../components/DeltaBadge';
 import { useEvent } from '../hooks/useEventContext';
 import { supabase } from '../lib/supabase';
-import { computeSignalScore, predictHotRounded } from '../lib/recommendations';
+import { computeSignalScore, predictHotRounded, predictWarmPressure, updateWarmLearning } from '../lib/recommendations';
 import { OpenSession, ActiveEvent } from '../types';
 import { useLocationAndWeather } from '../hooks/useLocationAndWeather';
 import { useSettings } from '../hooks/useSettings';
@@ -62,13 +62,36 @@ function pressureLooksWrong(val: string, unit: 'psi' | 'bar' | 'kpa'): boolean {
 }
 
 export default function QuickLogScreen({ navigation, route }: Props) {
-  const { activeEvent, openSession, setActiveTab, setOpenSession, clearOpenSession, setLastEntry, incrementSession } = useEvent();
+  const { activeEvent, setActiveEvent, openSession, setActiveTab, setOpenSession, clearOpenSession, setLastEntry, incrementSession } = useEvent();
   const { weather } = useLocationAndWeather();
   const { displayPressure, pressureUnit, inputToPsi, displayTemp, tempUnit, settings } = useSettings();
   const ambientTempC = route?.params?.ambientTempC ?? weather?.temp_c ?? null;
   const fourCornerCold = settings.four_corner_cold;
   const coldStartRef = useRef<number>(Date.now());
   const hotStartRef = useRef<number>(Date.now());
+
+  // Tyre target data — fetched from tire_targets on mount
+  const [tireTargetData, setTireTargetData] = useState<{
+    target_temp_min_c?: number | null;
+    target_temp_max_c?: number | null;
+  } | null>(null);
+
+  // Learned warm pressure values — read from activeEvent (fetched once in EventSetupScreen)
+  const learnedWarm = {
+    garageTireSetId:       activeEvent?.garage_tire_set_id       ?? null,
+    pWarmNormAvgFront:     activeEvent?.p_warm_norm_avg_front    ?? null,
+    pWarmNormAvgRear:      activeEvent?.p_warm_norm_avg_rear     ?? null,
+    pWarmSessionCount:     activeEvent?.p_warm_session_count     ?? 0,
+    tCooldownFront:        activeEvent?.t_cooldown_front_c       ?? null,
+    tCooldownRear:         activeEvent?.t_cooldown_rear_c        ?? null,
+    tCooldownSessionCount: activeEvent?.t_cooldown_session_count ?? 0,
+    p_warm_norm_avg_front: activeEvent?.p_warm_norm_avg_front,
+    p_warm_norm_avg_rear:  activeEvent?.p_warm_norm_avg_rear,
+    p_warm_session_count:  activeEvent?.p_warm_session_count,
+    t_cooldown_front_c:    activeEvent?.t_cooldown_front_c,
+    t_cooldown_rear_c:     activeEvent?.t_cooldown_rear_c,
+    t_cooldown_session_count: activeEvent?.t_cooldown_session_count,
+  };
 
   const mode: Mode = route?.params?.mode === 'hot' ? 'hot' : 'cold';
 
@@ -84,7 +107,7 @@ export default function QuickLogScreen({ navigation, route }: Props) {
 
   const [savingCold, setSavingCold] = useState(false);
 
-  // Tyre target operating temp fetched from tire_targets — falls back to 60°C
+  // Tyre target operating temp — fetched once on event start
   const [tyreTempC, setTyreTempC] = useState(60);
   useEffect(() => {
     if (!activeEvent?.tire_front?.id) return;
@@ -94,6 +117,7 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       .eq('tire_id', activeEvent.tire_front.id)
       .maybeSingle()
       .then(({ data }) => {
+        setTireTargetData(data ?? null);
         if (data?.target_temp_min_c != null && data?.target_temp_max_c != null) {
           setTyreTempC((data.target_temp_min_c + data.target_temp_max_c) / 2);
         }
@@ -113,10 +137,10 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       const coldRR = openSession.cold_rr_psi ?? openSession.cold_rear_psi;
 
       return {
-        fl: ambientC !== undefined ? predictHotRounded(coldFL, ambientC, tyreTempC) : openSession.predicted_hot_fl,
-        fr: ambientC !== undefined ? predictHotRounded(coldFR, ambientC, tyreTempC) : openSession.predicted_hot_fr,
-        rl: ambientC !== undefined ? predictHotRounded(coldRL, ambientC, tyreTempC) : openSession.predicted_hot_rl,
-        rr: ambientC !== undefined ? predictHotRounded(coldRR, ambientC, tyreTempC) : openSession.predicted_hot_rr,
+        fl: openSession.predicted_warm_fl ?? (ambientC !== undefined ? predictHotRounded(coldFL, ambientC, tyreTempC) : openSession.predicted_hot_fl),
+        fr: openSession.predicted_warm_fr ?? (ambientC !== undefined ? predictHotRounded(coldFR, ambientC, tyreTempC) : openSession.predicted_hot_fr),
+        rl: openSession.predicted_warm_rl ?? (ambientC !== undefined ? predictHotRounded(coldRL, ambientC, tyreTempC) : openSession.predicted_hot_rl),
+        rr: openSession.predicted_warm_rr ?? (ambientC !== undefined ? predictHotRounded(coldRR, ambientC, tyreTempC) : openSession.predicted_hot_rr),
       };
     }
     return { fl: 36.0, fr: 36.0, rl: 33.5, rr: 33.5 };
@@ -266,6 +290,10 @@ export default function QuickLogScreen({ navigation, route }: Props) {
       predicted_hot_fr:  predictHotRounded(coldFR ?? coldF, ambientTempC ?? 20, tyreTempC),
       predicted_hot_rl:  predictHotRounded(coldRL ?? coldR, ambientTempC ?? 20, tyreTempC),
       predicted_hot_rr:  predictHotRounded(coldRR ?? coldR, ambientTempC ?? 20, tyreTempC),
+      predicted_warm_fl: predictWarmPressure(coldFL ?? coldF, ambientTempC ?? 20, tireTargetData, learnedWarm.tCooldownFront, learnedWarm.tCooldownSessionCount, learnedWarm.pWarmNormAvgFront, learnedWarm.pWarmSessionCount),
+      predicted_warm_fr: predictWarmPressure(coldFR ?? coldF, ambientTempC ?? 20, tireTargetData, learnedWarm.tCooldownFront, learnedWarm.tCooldownSessionCount, learnedWarm.pWarmNormAvgFront, learnedWarm.pWarmSessionCount),
+      predicted_warm_rl: predictWarmPressure(coldRL ?? coldR, ambientTempC ?? 20, tireTargetData, learnedWarm.tCooldownRear,  learnedWarm.tCooldownSessionCount, learnedWarm.pWarmNormAvgRear,  learnedWarm.pWarmSessionCount),
+      predicted_warm_rr: predictWarmPressure(coldRR ?? coldR, ambientTempC ?? 20, tireTargetData, learnedWarm.tCooldownRear,  learnedWarm.tCooldownSessionCount, learnedWarm.pWarmNormAvgRear,  learnedWarm.pWarmSessionCount),
       saved_at:          new Date().toISOString(),
       ambient_temp_c:    ambientTempC ?? undefined,
       ambient_source:    ambientTempC != null ? 'auto' : undefined,
@@ -366,6 +394,49 @@ export default function QuickLogScreen({ navigation, route }: Props) {
 
     setLastEntry({ ...entry, id: entryId });
     incrementSession();
+
+    // Update learned warm pressure model for this tyre set
+    if (learnedWarm.garageTireSetId) {
+      // QuickLogScreen is the axle-level non-pyrometer path — no tyre temp data.
+      // Approach A (pressure-only) will be used by updateWarmLearning.
+      const pyroFront = null;
+      const pyroRear  = null;
+      await updateWarmLearning(
+        supabase,
+        learnedWarm.garageTireSetId,
+        entry.ambient_temp_c ?? 20,
+        entry.cold_front_psi ?? 0,
+        entry.hot_front_psi ?? null,
+        pyroFront,
+        entry.cold_rear_psi ?? 0,
+        entry.hot_rear_psi ?? null,
+        pyroRear,
+        learnedWarm,
+        tireTargetData,
+      );
+      // Refresh activeEvent with updated learned values so subsequent sessions
+      // within the same event pass correct current values to updateWarmLearning
+      const { data: refreshed } = await supabase
+        .from('garage_tire_sets')
+        .select(`
+          p_warm_norm_avg_front, p_warm_norm_avg_rear, p_warm_session_count,
+          t_cooldown_front_c, t_cooldown_rear_c, t_cooldown_session_count
+        `)
+        .eq('id', activeEvent.garage_tire_set_id!)
+        .single();
+      if (refreshed && activeEvent) {
+        setActiveEvent({
+          ...activeEvent,
+          p_warm_norm_avg_front:     refreshed.p_warm_norm_avg_front,
+          p_warm_norm_avg_rear:      refreshed.p_warm_norm_avg_rear,
+          p_warm_session_count:      refreshed.p_warm_session_count,
+          t_cooldown_front_c:        refreshed.t_cooldown_front_c,
+          t_cooldown_rear_c:         refreshed.t_cooldown_rear_c,
+          t_cooldown_session_count:  refreshed.t_cooldown_session_count,
+        });
+      }
+    }
+
     await clearOpenSession();
     setSubmitting(false);
 
@@ -440,8 +511,13 @@ export default function QuickLogScreen({ navigation, route }: Props) {
         .insert({ ...entry, id: entryIdSkip, signal_score: signalScore });
     } catch {}
 
-    setLastEntry(entry);
+    setLastEntry({ ...entry, id: entryIdSkip });
     incrementSession();
+
+    // Skip path — no hot pressures recorded, nothing to learn from
+    // updateWarmLearning requires hot PSI data to update either approach,
+    // so we skip the call entirely here rather than passing nulls.
+
     await clearOpenSession();
     setSubmitting(false);
 
@@ -680,8 +756,8 @@ export default function QuickLogScreen({ navigation, route }: Props) {
           {[
             { label: 'Cold F', val: openSession.cold_front_psi },
             { label: 'Cold R', val: openSession.cold_rear_psi },
-            { label: 'Pred FL/FR', val: openSession.predicted_hot_fl, warm: true },
-            { label: 'Pred RL/RR', val: openSession.predicted_hot_rl, warm: true },
+            { label: 'Pred FL/FR', val: openSession.predicted_warm_fl ?? openSession.predicted_hot_fl, warm: true },
+            { label: 'Pred RL/RR', val: openSession.predicted_warm_rl ?? openSession.predicted_hot_rl, warm: true },
             ...(weather ? [{ label: 'Ambient', val: null, temp: weather.temp_c }] : []),
           ].map(({ label, val, warm, temp }: any) => (
             <View key={label} style={styles.refChip}>
@@ -744,13 +820,18 @@ export default function QuickLogScreen({ navigation, route }: Props) {
             {CORNER_LABELS[activeCorner]} ·{' '}
             predicted{' '}
             <Text style={{ color: colors.warning, fontWeight: '600' }}>
-              {(activeCorner.startsWith('f')
-                ? openSession?.predicted_hot_fl
-                : openSession?.predicted_hot_rl
-              ) != null
-                ? displayPressure(activeCorner.startsWith('f')
-                    ? openSession!.predicted_hot_fl
-                    : openSession!.predicted_hot_rl)
+              {({
+                fl: openSession?.predicted_warm_fl ?? openSession?.predicted_hot_fl,
+                fr: openSession?.predicted_warm_fr ?? openSession?.predicted_hot_fr,
+                rl: openSession?.predicted_warm_rl ?? openSession?.predicted_hot_rl,
+                rr: openSession?.predicted_warm_rr ?? openSession?.predicted_hot_rr,
+              }[activeCorner]) != null
+                ? displayPressure(({
+                    fl: openSession!.predicted_warm_fl ?? openSession!.predicted_hot_fl,
+                    fr: openSession!.predicted_warm_fr ?? openSession!.predicted_hot_fr,
+                    rl: openSession!.predicted_warm_rl ?? openSession!.predicted_hot_rl,
+                    rr: openSession!.predicted_warm_rr ?? openSession!.predicted_hot_rr,
+                  } as Record<string, number>)[activeCorner])
                 : '—'} {pressureUnit()}
             </Text>
           </Text>

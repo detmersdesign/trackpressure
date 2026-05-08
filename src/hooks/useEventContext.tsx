@@ -65,7 +65,16 @@ const EventContext = createContext<EventContextValue>({
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function EventProvider({ children }: { children: ReactNode }) {
-  const [activeEvent,     setActiveEvent]     = useState<ActiveEvent | null>(null);
+  const [activeEvent,     setActiveEventState] = useState<ActiveEvent | null>(null);
+
+  // Wrap setActiveEvent to reset sessionCount only when a genuinely new event
+  // starts — not on warm-learning refreshes which spread the same event object.
+  function setActiveEvent(e: ActiveEvent | null) {
+    setActiveEventState(e);
+    if (e !== null && e.started_at !== activeEvent?.started_at) {
+      setSessionCount(0);
+    }
+  }
   const [openSession,     setOpenSessionState] = useState<OpenSession | null>(null);
   const [lastEntry,       setLastEntry]       = useState<Partial<PressureEntry> | null>(null);
   const [sessionCount,    setSessionCount]    = useState(0);
